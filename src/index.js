@@ -355,7 +355,7 @@ app.put('/api/divisions/:divisionId', async (req, res) => {
   }
 });
 
-app.delete('/api/divisions/:divisionId', async (req, res) => {
+app.delete('/api/divisions/:divisionId', requireAdmin, async (req, res) => {
   try {
     const result = await teamSeasonDivisionManager.deleteDivision(req.params.divisionId);
     res.json(result);

@@ -42,6 +42,7 @@ const Seasons = () => {
   const [divisionsLoading, setDivisionsLoading] = useState(false);
   const [divisionSaving, setDivisionSaving] = useState(false);
   const [divisionDirty, setDivisionDirty] = useState(false);
+  const [fixtureInfoSeasonId, setFixtureInfoSeasonId] = useState('');
 
   useEffect(() => {
     if (didInitRef.current) return;
@@ -152,6 +153,21 @@ const Seasons = () => {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
       setDivisionSaving(false);
+    }
+  };
+
+  const deleteDivision = async (division) => {
+    if (!isAdmin) return;
+    if (!division?.id) return;
+    if (managingSeason?.status !== 'draft') return;
+    if (!window.confirm(`Remove division "${division.name}"? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`/api/divisions/${division.id}`);
+      toast.success('Division removed');
+      await openDivisions(managingSeasonId);
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -283,6 +299,7 @@ const Seasons = () => {
 
   const managingSeason = managingSeasonId ? seasons.find((x) => x.id === managingSeasonId) : null;
   const isManagingLocked = managingSeason ? !['draft', 'ready'].includes(managingSeason.status) : false;
+  const isManagingDraft = managingSeason ? managingSeason.status === 'draft' : false;
 
   return (
     <div className="space-y-6">
@@ -360,7 +377,30 @@ const Seasons = () => {
                       </button>
                       {isAdmin && s.status === 'draft' && (fixtureCounts[s.id] || 0) === 0 && (
                         <button className="btn btn-warning" onClick={() => generateFixtures(s.id)} disabled={generating}>
-                          {generating ? 'Generating...' : 'Generate Fixtures'}
+                          <span className="flex items-center gap-2">
+                            <span>{generating ? 'Generating...' : 'Generate Fixtures'}</span>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              className="inline-flex items-center justify-center h-6 w-6 rounded-full border border-yellow-300 bg-white text-yellow-800 hover:bg-yellow-50"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setFixtureInfoSeasonId(s.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setFixtureInfoSeasonId(s.id);
+                                }
+                              }}
+                              title="How fixtures are created"
+                              aria-label="How fixtures are created"
+                            >
+                              i
+                            </span>
+                          </span>
                         </button>
                       )}
                       {isAdmin && s.status === 'ready' && (
@@ -447,6 +487,11 @@ const Seasons = () => {
                 <div key={d.id} className="border rounded-lg p-4">
                   <div className="flex justify-between items-center mb-3">
                     <div className="font-medium text-gray-800">{d.name}</div>
+                    {isAdmin && isManagingDraft && (
+                      <button className="btn btn-danger" type="button" onClick={() => deleteDivision(d)}>
+                        Remove
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -488,6 +533,40 @@ const Seasons = () => {
               : 'Each team should be in only one division per season.'}
           </div>
         </Card>
+      )}
+
+      {fixtureInfoSeasonId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-xl rounded-lg bg-white shadow-lg border p-5">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <div className="text-lg font-semibold text-gray-800">How fixtures are created</div>
+              </div>
+              <button className="btn btn-secondary" type="button" onClick={() => setFixtureInfoSeasonId('')}>
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm text-gray-700">
+              <div>
+                It creates a full home-and-away schedule for each division (every team plays every other team twice).
+              </div>
+              <div>
+                Matches are placed inside the season scheduling window (Start/End dates) and it tries to:
+              </div>
+              <div className="space-y-1 pl-4">
+                <div>- Put home matches on each team’s preferred Home Day (if set).</div>
+                <div>- If a Home Day slot isn’t possible, pick another weekday instead.</div>
+                <div>- Avoid Irish public holidays.</div>
+                <div>- Avoid scheduling matches between Christmas Day and 10th January.</div>
+                <div>- Spread matches out fairly evenly, with a slight bias to schedule more in the first half (to leave room for reschedules).</div>
+              </div>
+              <div>
+                After fixtures are generated, the season moves from <span className="font-medium">draft</span> to <span className="font-medium">ready</span>.
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
