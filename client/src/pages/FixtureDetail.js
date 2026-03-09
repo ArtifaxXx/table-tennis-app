@@ -220,6 +220,22 @@ const GameCard = ({ game, onSave }) => {
     setSets(sets.slice(0, sets.length - 1));
   };
 
+  const setSideClasses = (homePoints, awayPoints) => {
+    const h = Number(homePoints) || 0;
+    const a = Number(awayPoints) || 0;
+    if (h === 0 && a === 0) {
+      return { home: 'bg-white', away: 'bg-white' };
+    }
+    if (h === a) {
+      return { home: 'bg-white', away: 'bg-white' };
+    }
+    const homeWins = h > a;
+    return {
+      home: homeWins ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900',
+      away: homeWins ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900',
+    };
+  };
+
   return (
     <div className="border rounded-lg p-4">
       <div className="flex justify-between items-start">
@@ -238,9 +254,9 @@ const GameCard = ({ game, onSave }) => {
         {sets.map((s, idx) => (
           <div key={idx} className="bg-gray-50 rounded p-2">
             <div className="text-xs text-gray-500 mb-1">Set {idx + 1}</div>
-            <div className="flex gap-2">
+            <div className="grid grid-rows-2 gap-2">
               <input
-                className="input"
+                className={`input border ${setSideClasses(s.home_points, s.away_points).home}`}
                 type="number"
                 min="0"
                 value={s.home_points}
@@ -252,7 +268,7 @@ const GameCard = ({ game, onSave }) => {
                 }}
               />
               <input
-                className="input"
+                className={`input border ${setSideClasses(s.home_points, s.away_points).away}`}
                 type="number"
                 min="0"
                 value={s.away_points}

@@ -163,7 +163,7 @@ const Navbar = () => {
                 {mobileOpen ? <X size={22} /> : <Menu size={22} />}
               </button>
               <h1 className="text-lg md:text-xl font-bold text-gray-800 truncate">
-                <span className="hidden sm:inline">Bray & Districk Table Tennis League</span>
+                <span className="hidden sm:inline">Bray & District Table Tennis League</span>
                 <span className="sm:hidden">Bray TT League</span>
               </h1>
             </div>

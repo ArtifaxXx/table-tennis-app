@@ -5,6 +5,109 @@ import { useToast } from '../context/ToastContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 
+const SearchableSelect = ({
+  options,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}) => {
+  const rootRef = useRef(null);
+  const inputRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const selectedLabel = useMemo(
+    () => options.find((o) => o.value === value)?.label || '',
+    [options, value]
+  );
+  const [query, setQuery] = useState(selectedLabel);
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+  }, [selectedLabel]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e) => {
+      const el = rootRef.current;
+      if (!el) return;
+      if (!el.contains(e.target)) {
+        setOpen(false);
+        setQuery(selectedLabel);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [selectedLabel]);
+
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const filtered = normalizedQuery
+    ? options.filter((o) => String(o.label).toLowerCase().includes(normalizedQuery))
+    : options;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <input
+        ref={inputRef}
+        className="input"
+        value={query}
+        placeholder={placeholder}
+        disabled={disabled}
+        onFocus={() => {
+          if (disabled) return;
+          setOpen(true);
+          setQuery('');
+        }}
+        onChange={(e) => {
+          if (disabled) return;
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setOpen(false);
+            setQuery(selectedLabel);
+            inputRef.current?.blur();
+          }
+        }}
+      />
+
+      {open && !disabled && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-auto">
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-gray-600"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onChange('');
+              setQuery('');
+              setOpen(false);
+            }}
+          >
+            (none)
+          </button>
+          {filtered.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${o.value === value ? 'bg-gray-50' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(o.value);
+                setQuery(o.label);
+                setOpen(false);
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Teams = () => {
   const { isAdmin } = useAuth();
   const toast = useToast();
@@ -28,6 +131,11 @@ const Teams = () => {
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === selectedTeamId) || null,
     [teams, selectedTeamId]
+  );
+
+  const playerOptions = useMemo(
+    () => players.map((p) => ({ value: p.id, label: p.name })),
+    [players]
   );
 
   useEffect(() => {
@@ -334,22 +442,18 @@ const Teams = () => {
                 <div className="font-medium text-gray-700 mb-2">Main (3 players)</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[0, 1, 2].map((idx) => (
-                    <select
+                    <SearchableSelect
                       key={idx}
-                      className="input"
+                      options={playerOptions}
                       value={mainIds[idx]}
                       disabled={!isAdmin}
-                      onChange={(e) => {
+                      placeholder="Select player"
+                      onChange={(nextValue) => {
                         const next = [...mainIds];
-                        next[idx] = e.target.value;
+                        next[idx] = nextValue;
                         setMainIds(next);
                       }}
-                    >
-                      <option value="">Select player</option>
-                      {players.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    />
                   ))}
                 </div>
               </div>
@@ -358,22 +462,18 @@ const Teams = () => {
                 <div className="font-medium text-gray-700 mb-2">Subs (up to 3)</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[0, 1, 2].map((idx) => (
-                    <select
+                    <SearchableSelect
                       key={idx}
-                      className="input"
+                      options={playerOptions}
                       value={subIds[idx]}
                       disabled={!isAdmin}
-                      onChange={(e) => {
+                      placeholder="(none)"
+                      onChange={(nextValue) => {
                         const next = [...subIds];
-                        next[idx] = e.target.value;
+                        next[idx] = nextValue;
                         setSubIds(next);
                       }}
-                    >
-                      <option value="">(none)</option>
-                      {players.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    />
                   ))}
                 </div>
               </div>
