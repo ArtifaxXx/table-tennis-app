@@ -56,6 +56,61 @@ class PlayerManager {
 
     const players = await this.db.all(sql);
 
+    const doublesByPlayer = await this.db.all(
+      `SELECT player_id,
+              SUM(doubles_wins) as doubles_wins,
+              SUM(doubles_losses) as doubles_losses
+       FROM (
+         SELECT fg.home_player_a_id as player_id,
+                CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_wins,
+                CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_losses
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT fg.home_player_b_id as player_id,
+                CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_wins,
+                CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_losses
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.home_player_b_id IS NOT NULL
+
+         UNION ALL
+
+         SELECT fg.away_player_a_id as player_id,
+                CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_wins,
+                CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_losses
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT fg.away_player_b_id as player_id,
+                CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_wins,
+                CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_losses
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.away_player_b_id IS NOT NULL
+       ) t
+       GROUP BY player_id`,
+      []
+    );
+
+    const doublesMap = new Map(doublesByPlayer.map((r) => [r.player_id, r]));
+
     const setsByPlayer = await this.db.all(
       `SELECT player_id,
               SUM(sets_won) as sets_won,
@@ -91,11 +146,19 @@ class PlayerManager {
 
     return players.map((player) => {
       const s = setsMap.get(player.id) || { sets_won: 0, sets_lost: 0 };
+      const d = doublesMap.get(player.id) || { doubles_wins: 0, doubles_losses: 0 };
+      const doublesWins = Number(d.doubles_wins || 0);
+      const doublesLosses = Number(d.doubles_losses || 0);
+      const doublesPlayed = doublesWins + doublesLosses;
       return {
         ...player,
         singles_sets_won: s.sets_won || 0,
         singles_sets_lost: s.sets_lost || 0,
         win_rate: player.total_matches > 0 ? ((player.wins / player.total_matches) * 100).toFixed(1) : 0,
+        doubles_wins: doublesWins,
+        doubles_losses: doublesLosses,
+        doubles_played: doublesPlayed,
+        doubles_win_pct: doublesPlayed > 0 ? ((doublesWins / doublesPlayed) * 100).toFixed(1) : 0,
       };
     });
   }

@@ -285,7 +285,13 @@ class TeamLeagueManager {
       baseParams.push(divisionId);
     }
     const filterSql = where.length > 0 ? `AND ${where.join(' AND ')}` : '';
-    const params = [...baseParams, ...baseParams, ...baseParams, ...baseParams];
+    const params = [
+      ...baseParams, // w
+      ...baseParams, // l
+      ...baseParams, ...baseParams, // s (2 selects)
+      ...baseParams, ...baseParams, ...baseParams, ...baseParams, // dw (4 selects)
+      ...baseParams, ...baseParams, ...baseParams, ...baseParams, // dl (4 selects)
+    ];
 
     const stats = await this.db.all(
       `SELECT
@@ -294,8 +300,19 @@ class TeamLeagueManager {
          COALESCE(w.wins, 0) as singles_wins,
          COALESCE(l.losses, 0) as singles_losses,
          COALESCE(w.wins, 0) + COALESCE(l.losses, 0) as singles_played,
+         ROUND(
+           COALESCE(w.wins, 0) * 100.0 / NULLIF((COALESCE(w.wins, 0) + COALESCE(l.losses, 0)), 0),
+           1
+         ) as singles_win_pct,
          COALESCE(s.sets_won, 0) as singles_sets_won,
-         COALESCE(s.sets_lost, 0) as singles_sets_lost
+         COALESCE(s.sets_lost, 0) as singles_sets_lost,
+         COALESCE(dw.wins, 0) as doubles_wins,
+         COALESCE(dl.losses, 0) as doubles_losses,
+         COALESCE(dw.wins, 0) + COALESCE(dl.losses, 0) as doubles_played,
+         ROUND(
+           COALESCE(dw.wins, 0) * 100.0 / NULLIF((COALESCE(dw.wins, 0) + COALESCE(dl.losses, 0)), 0),
+           1
+         ) as doubles_win_pct
        FROM players p
        LEFT JOIN (
          SELECT
@@ -358,6 +375,96 @@ class TeamLeagueManager {
          ) t
          GROUP BY player_id
        ) s ON s.player_id = p.id
+       LEFT JOIN (
+         SELECT player_id, COUNT(*) as wins
+         FROM (
+           SELECT fg.home_player_a_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'home'
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.home_player_b_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'home'
+             AND fg.home_player_b_id IS NOT NULL
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.away_player_a_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'away'
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.away_player_b_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'away'
+             AND fg.away_player_b_id IS NOT NULL
+             ${filterSql}
+         ) t
+         GROUP BY player_id
+       ) dw ON dw.player_id = p.id
+       LEFT JOIN (
+         SELECT player_id, COUNT(*) as losses
+         FROM (
+           SELECT fg.away_player_a_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'home'
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.away_player_b_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'home'
+             AND fg.away_player_b_id IS NOT NULL
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.home_player_a_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'away'
+             ${filterSql}
+
+           UNION ALL
+
+           SELECT fg.home_player_b_id as player_id
+           FROM fixture_games fg
+           JOIN fixtures f ON fg.fixture_id = f.id
+           WHERE f.status = 'completed'
+             AND fg.game_type = 'doubles'
+             AND fg.winner_side = 'away'
+             AND fg.home_player_b_id IS NOT NULL
+             ${filterSql}
+         ) t
+         GROUP BY player_id
+       ) dl ON dl.player_id = p.id
        WHERE p.active = 1
        ORDER BY singles_wins DESC, player_name ASC`,
       params

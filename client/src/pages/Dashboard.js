@@ -114,7 +114,11 @@ const Dashboard = () => {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Fixtures</h3>
           <div className="space-y-3">
             {stats.recentFixtures?.map((match, index) => (
-              <div key={index} className="flex justify-between items-center py-2 border-b">
+              <Link
+                key={index}
+                to={`/fixtures/${match.id}`}
+                className="flex justify-between items-center py-2 border-b hover:bg-gray-50 rounded px-2 -mx-2"
+              >
                 <div>
                   <p className="font-medium text-gray-800">
                     {match.home_team_name} vs {match.away_team_name}
@@ -128,7 +132,7 @@ const Dashboard = () => {
                     {new Date(match.match_date).toLocaleDateString()}
                   </p>
                 </div>
-              </div>
+              </Link>
             ))}
             {(!stats.recentFixtures || stats.recentFixtures.length === 0) && (
               <p className="text-gray-500 text-center py-4">No completed fixtures yet</p>

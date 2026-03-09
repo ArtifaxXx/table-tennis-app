@@ -172,21 +172,27 @@ const Players = () => {
                 </th>
                 <th
                   className="cursor-pointer"
-                  onClick={() => requestSort('win_rate', (p) => Number(p.win_rate || 0))}
+                  onClick={() => requestSort('wins', (p) => Number(p.wins || 0))}
                 >
-                  Singles Win Rate{sortIndicator(sortConfig, 'win_rate')}
+                  Singles W/L/%{sortIndicator(sortConfig, 'wins')}
                 </th>
                 <th
                   className="cursor-pointer"
                   onClick={() => requestSort('singles_sets_won', (p) => Number(p.singles_sets_won || 0))}
                 >
-                  Sets Won{sortIndicator(sortConfig, 'singles_sets_won')}
+                  Sets W/L{sortIndicator(sortConfig, 'singles_sets_won')}
                 </th>
                 <th
                   className="cursor-pointer"
-                  onClick={() => requestSort('singles_sets_lost', (p) => Number(p.singles_sets_lost || 0))}
+                  onClick={() => requestSort('doubles_played', (p) => Number(p.doubles_played || 0))}
                 >
-                  Sets Lost{sortIndicator(sortConfig, 'singles_sets_lost')}
+                  Doubles Played{sortIndicator(sortConfig, 'doubles_played')}
+                </th>
+                <th
+                  className="cursor-pointer"
+                  onClick={() => requestSort('doubles_wins', (p) => Number(p.doubles_wins || 0))}
+                >
+                  Doubles W/L/%{sortIndicator(sortConfig, 'doubles_wins')}
                 </th>
                 <th>Actions</th>
               </tr>
@@ -196,9 +202,24 @@ const Players = () => {
                 <tr key={player.id}>
                   <td className="font-medium">{player.name}</td>
                   <td>{player.total_matches || 0}</td>
-                  <td>{player.win_rate}%</td>
-                  <td className="font-medium">{player.singles_sets_won || 0}</td>
-                  <td>{player.singles_sets_lost || 0}</td>
+                  <td className="font-medium">
+                    <span className="text-green-700">{player.wins || 0}</span>
+                    <span className="text-gray-500">/</span>
+                    <span className="text-red-700">{player.losses || 0}</span>
+                    <span className="text-gray-500"> ({player.win_rate || 0}%)</span>
+                  </td>
+                  <td className="font-medium">
+                    {player.singles_sets_won || 0}
+                    <span className="text-gray-500">/</span>
+                    {player.singles_sets_lost || 0}
+                  </td>
+                  <td>{player.doubles_played || 0}</td>
+                  <td className="font-medium">
+                    <span className="text-green-700">{player.doubles_wins || 0}</span>
+                    <span className="text-gray-500">/</span>
+                    <span className="text-red-700">{player.doubles_losses || 0}</span>
+                    <span className="text-gray-500"> ({player.doubles_win_pct || 0}%)</span>
+                  </td>
                   <td>
                     {isAdmin && (
                       <div className="flex space-x-2">
