@@ -32,6 +32,23 @@ class TeamLeagueManager {
       params
     );
 
+    const upcomingFixtures = await this.db.all(
+      `SELECT f.id,
+              f.match_date,
+              ht.name as home_team_name,
+              at.name as away_team_name
+       FROM fixtures f
+       JOIN teams ht ON f.home_team_id = ht.id
+       JOIN teams at ON f.away_team_id = at.id
+       WHERE f.status = 'scheduled'
+         AND f.match_date IS NOT NULL
+         AND f.match_date >= CURRENT_TIMESTAMP
+         ${whereSql}
+       ORDER BY f.match_date ASC
+       LIMIT 5`,
+      params
+    );
+
     const recentFixtures = await this.db.all(
       `SELECT f.id,
               f.match_date,
@@ -82,6 +99,7 @@ class TeamLeagueManager {
       completedFixtures: completedFixtures.count,
       inProgressFixtures: inProgressFixtures.count,
       scheduledFixtures: scheduledFixtures.count,
+      upcomingFixtures: upcomingFixtures || [],
       recentFixtures,
       topTeams,
       topPlayers,

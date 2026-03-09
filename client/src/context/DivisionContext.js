@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 
 const DivisionContext = createContext(null);
@@ -32,33 +32,21 @@ export const DivisionProvider = ({ children }) => {
     }
   };
 
-  const fetchSeasons = async () => {
+  const fetchSeasons = useCallback(async () => {
     const res = await axios.get('/api/team-seasons');
     return res.data || [];
-  };
+  }, []);
 
-  const refreshSeasons = async () => {
-    const next = await fetchSeasons();
-    setSeasons(next);
-
-    // If current selection no longer exists, fall back to active/first season.
-    if (selectedSeasonId && !next.some((s) => s.id === selectedSeasonId)) {
-      await applySeasonAndDivision({ seasonId: '', divisionId: '' });
-    }
-
-    return next;
-  };
-
-  const fetchActiveSeason = async () => {
+  const fetchActiveSeason = useCallback(async () => {
     try {
       const res = await axios.get('/api/team-seasons/active');
       return res.data || null;
     } catch (e) {
       return null;
     }
-  };
+  }, []);
 
-  const fetchDivisions = async (seasonId) => {
+  const fetchDivisions = useCallback(async (seasonId) => {
     if (!seasonId) return [];
     try {
       const res = await axios.get(`/api/team-seasons/${seasonId}/divisions`);
@@ -66,9 +54,9 @@ export const DivisionProvider = ({ children }) => {
     } catch (e) {
       return [];
     }
-  };
+  }, []);
 
-  const applySeasonAndDivision = async ({ seasonId, divisionId }) => {
+  const applySeasonAndDivision = useCallback(async ({ seasonId, divisionId }) => {
     const nextSeasons = seasons && seasons.length > 0 ? seasons : await fetchSeasons();
     if (!seasons || seasons.length === 0) setSeasons(nextSeasons);
 
@@ -101,7 +89,19 @@ export const DivisionProvider = ({ children }) => {
     setSelectedDivisionId(resolvedDivisionId);
 
     persist({ seasonId: resolvedSeasonId, divisionId: resolvedDivisionId });
-  };
+  }, [fetchActiveSeason, fetchDivisions, fetchSeasons, seasons]);
+
+  const refreshSeasons = useCallback(async () => {
+    const next = await fetchSeasons();
+    setSeasons(next);
+
+    // If current selection no longer exists, fall back to active/first season.
+    if (selectedSeasonId && !next.some((s) => s.id === selectedSeasonId)) {
+      await applySeasonAndDivision({ seasonId: '', divisionId: '' });
+    }
+
+    return next;
+  }, [applySeasonAndDivision, fetchSeasons, selectedSeasonId]);
 
   useEffect(() => {
     if (initRef.current) return;
@@ -121,21 +121,21 @@ export const DivisionProvider = ({ children }) => {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [applySeasonAndDivision]);
 
-  const changeSeason = async (seasonId) => {
+  const changeSeason = useCallback(async (seasonId) => {
     setLoading(true);
     try {
       await applySeasonAndDivision({ seasonId, divisionId: '' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [applySeasonAndDivision]);
 
-  const changeDivision = (divisionId) => {
+  const changeDivision = useCallback((divisionId) => {
     setSelectedDivisionId(divisionId);
     persist({ seasonId: selectedSeasonId, divisionId });
-  };
+  }, [selectedSeasonId]);
 
   const value = useMemo(
     () => ({
@@ -148,7 +148,7 @@ export const DivisionProvider = ({ children }) => {
       setSelectedSeasonId: changeSeason,
       setSelectedDivisionId: changeDivision,
     }),
-    [seasons, divisions, selectedSeasonId, selectedDivisionId, loading]
+    [seasons, divisions, selectedSeasonId, selectedDivisionId, loading, refreshSeasons, changeSeason, changeDivision]
   );
 
   return <DivisionContext.Provider value={value}>{children}</DivisionContext.Provider>;

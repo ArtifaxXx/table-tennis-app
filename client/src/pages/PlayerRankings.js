@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
@@ -11,20 +11,7 @@ const PlayerRankings = () => {
   const didInitRef = useRef(false);
   const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
 
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    if (selectedSeasonId) {
-      fetchRows(selectedSeasonId, selectedDivisionId);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedSeasonId) return;
-    fetchRows(selectedSeasonId, selectedDivisionId);
-  }, [selectedSeasonId, selectedDivisionId]);
-
-  const fetchRows = async (seasonId, divisionId) => {
+  const fetchRows = useCallback(async function fetchRows(seasonId, divisionId) {
     try {
       const res = await axios.get('/api/player-rankings', { params: { seasonId, divisionId } });
       setRows(res.data);
@@ -33,7 +20,20 @@ const PlayerRankings = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    if (selectedSeasonId) {
+      fetchRows(selectedSeasonId, selectedDivisionId);
+    }
+  }, [fetchRows, selectedSeasonId, selectedDivisionId]);
+
+  useEffect(() => {
+    if (!selectedSeasonId) return;
+    fetchRows(selectedSeasonId, selectedDivisionId);
+  }, [fetchRows, selectedSeasonId, selectedDivisionId]);
 
   const { items: sortedRows, requestSort, sortConfig } = useSortableData(rows, {
     key: 'rank',

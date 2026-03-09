@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
@@ -47,13 +47,7 @@ const Seasons = () => {
   const [fixturePreviewLoading, setFixturePreviewLoading] = useState(false);
   const [fixturePreview, setFixturePreview] = useState(null);
 
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [all, active] = await Promise.all([
         axios.get('/api/team-seasons'),
@@ -70,7 +64,13 @@ const Seasons = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    fetchData();
+  }, [fetchData]);
 
   const openFixturePreview = async (seasonId) => {
     if (!seasonId) return;

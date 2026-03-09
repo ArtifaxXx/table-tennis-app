@@ -14,6 +14,7 @@ const Navbar = () => {
   const toast = useToast();
   const [role, setRole] = useState('viewer');
   const [authOpen, setAuthOpen] = useState(false);
+  const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -166,6 +167,16 @@ const Navbar = () => {
                 <span className="hidden sm:inline">Bray & District Table Tennis League</span>
                 <span className="sm:hidden">Bray TT League</span>
               </h1>
+            </div>
+
+            <div className="flex-1 flex justify-center px-2">
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => setDisclaimerOpen(true)}
+              >
+                Prototype Disclaimer
+              </button>
             </div>
 
             <div className="flex items-center gap-2">
@@ -337,6 +348,41 @@ const Navbar = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {disclaimerOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800">Prototype Disclaimer</h2>
+              <button
+                type="button"
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setDisclaimerOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm text-gray-800">
+              <div>
+                This is just a prototype that is actively developped and on a free hosting for now
+              </div>
+              <div>
+                To get admin rights click profile icon at the top right and put in <span className="font-semibold">"555"</span> as password.
+              </div>
+              <div>
+                To get some data enter admin mode and click on <span className="font-semibold">"Seed Data"</span>. Wait till it finishes (40 sec) and reload the page.
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button className="btn btn-secondary" type="button" onClick={() => setDisclaimerOpen(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

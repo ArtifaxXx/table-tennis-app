@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
@@ -16,25 +16,7 @@ const Fixtures = () => {
   const didInitRef = useRef(false);
   const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
 
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    if (selectedSeasonId) {
-      fetchFixtures(selectedSeasonId, selectedDivisionId);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedSeasonId) return;
-    fetchFixtures(selectedSeasonId, selectedDivisionId);
-  }, [selectedSeasonId, selectedDivisionId]);
-
-  const { items: sortedFixtures, requestSort, sortConfig } = useSortableData(fixtures, {
-    key: 'match_date',
-    direction: 'desc',
-  });
-
-  const fetchFixtures = async (seasonId, divisionId) => {
+  const fetchFixtures = useCallback(async (seasonId, divisionId) => {
     try {
       const res = await axios.get('/api/fixtures', { params: { seasonId, divisionId } });
       setFixtures(res.data);
@@ -43,7 +25,25 @@ const Fixtures = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    if (selectedSeasonId) {
+      fetchFixtures(selectedSeasonId, selectedDivisionId);
+    }
+  }, [fetchFixtures, selectedSeasonId, selectedDivisionId]);
+
+  useEffect(() => {
+    if (!selectedSeasonId) return;
+    fetchFixtures(selectedSeasonId, selectedDivisionId);
+  }, [fetchFixtures, selectedSeasonId, selectedDivisionId]);
+
+  const { items: sortedFixtures, requestSort, sortConfig } = useSortableData(fixtures, {
+    key: 'match_date',
+    direction: 'desc',
+  });
 
   const toDateTimeLocalValue = (iso) => {
     if (!iso) return '';

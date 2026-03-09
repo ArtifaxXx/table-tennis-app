@@ -636,20 +636,19 @@ app.get('/api/dashboard', async (req, res) => {
     } else if (!season) {
       season = await teamSeasonManager.getActiveSeason();
       if (!season) {
-        season = await teamSeasonManager.getLatestReadySeason();
-      }
-      if (!season) {
         season = await teamSeasonManager.getLatestCompletedSeason();
       }
     }
 
     const divisionId = explicitDivisionId || (season ? await resolveDivisionId(req, season.id) : null);
 
+    const division = divisionId ? await teamSeasonDivisionManager.getDivisionById(divisionId) : null;
+
     const stats = await teamLeagueManager.getDashboardStatistics(season?.id, divisionId);
     res.json({
       ...stats,
       currentSeason: season ? { id: season.id, name: season.name, status: season.status } : null,
-      currentDivision: divisionId ? { id: divisionId } : null,
+      currentDivision: divisionId ? { id: divisionId, name: division?.name || null } : null,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

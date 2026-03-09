@@ -1,8 +1,7 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Users, Calendar, Trophy, TrendingUp } from 'lucide-react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
+import { Users, Calendar, Trophy } from 'lucide-react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { useDivisionContext } from '../context/DivisionContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 
@@ -10,25 +9,13 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const inFlightRef = useRef(false);
-  const { selectedSeasonId, selectedDivisionId } = useDivisionContext();
 
-  useEffect(() => {
-    fetchStats();
-
-    const onFocus = () => fetchStats();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [selectedSeasonId, selectedDivisionId]);
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
       const response = await axios.get('/api/dashboard', {
-        params: {
-          seasonId: selectedSeasonId,
-          divisionId: selectedDivisionId,
-        },
+        params: {},
       });
       setStats(response.data);
     } catch (error) {
@@ -37,7 +24,15 @@ const Dashboard = () => {
       setLoading(false);
       inFlightRef.current = false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+
+    const onFocus = () => fetchStats();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchStats]);
 
   if (loading) {
     return <div className="text-center py-8">Loading dashboard...</div>;
@@ -52,25 +47,33 @@ const Dashboard = () => {
       title: 'Teams',
       value: stats.totalTeams,
       icon: Users,
-      color: 'bg-blue-500'
+      color: 'bg-blue-500',
+      scope: 'Global',
+      to: '/teams'
     },
     {
       title: 'Players',
       value: stats.totalPlayers,
       icon: Users,
-      color: 'bg-indigo-500'
+      color: 'bg-indigo-500',
+      scope: 'Global',
+      to: '/players'
     },
     {
       title: 'Completed Fixtures',
       value: stats.completedFixtures,
       icon: Trophy,
-      color: 'bg-green-500'
+      color: 'bg-green-500',
+      scope: 'Current season/division',
+      to: '/fixtures'
     },
     {
       title: 'Scheduled Fixtures',
       value: stats.scheduledFixtures,
       icon: Calendar,
-      color: 'bg-yellow-500'
+      color: 'bg-yellow-500',
+      scope: 'Current season/division',
+      to: '/fixtures'
     }
   ];
 
@@ -114,25 +117,69 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card, index) => {
           const Icon = card.icon;
+          const Wrap = card.to ? Link : React.Fragment;
+          const wrapProps = card.to ? { to: card.to, className: 'block' } : {};
           return (
-            <Card key={index}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">{card.title}</p>
-                  <p className="text-2xl font-bold text-gray-800">{card.value}</p>
+            <Wrap key={index} {...wrapProps}>
+              <Card>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">{card.title}</p>
+                    <p className="text-2xl font-bold text-gray-800">{card.value}</p>
+                    <p className="text-xs text-gray-500 mt-1">{card.scope}</p>
+                  </div>
+                  <div className={`p-3 rounded-full ${card.color}`}>
+                    <Icon className="text-white" size={24} />
+                  </div>
                 </div>
-                <div className={`p-3 rounded-full ${card.color}`}>
-                  <Icon className="text-white" size={24} />
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </Wrap>
           );
         })}
       </div>
 
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Upcoming Fixtures</h3>
+            <div className="text-xs text-gray-500">Current season/division</div>
+          </div>
+          <Link className="text-sm text-blue-600 hover:text-blue-800" to="/fixtures">View all</Link>
+        </div>
+
+        {(stats.upcomingFixtures || []).length > 0 ? (
+          <div className="space-y-2">
+            {(stats.upcomingFixtures || []).map((f) => (
+              <Link
+                key={f.id}
+                to={`/fixtures/${f.id}`}
+                className="block rounded border hover:bg-gray-50 px-3 py-2"
+              >
+                <div className="flex justify-between items-start gap-4">
+                  <div className="font-medium text-gray-800">
+                    {f.home_team_name} vs {f.away_team_name}
+                  </div>
+                  <div className="text-sm text-gray-600 whitespace-nowrap">
+                    {f.match_date ? new Date(f.match_date).toLocaleString() : 'No date'}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="text-gray-500">No upcoming fixtures scheduled.</div>
+        )}
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Fixtures</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Recent Fixtures</h3>
+              <div className="text-xs text-gray-500">Current season/division</div>
+            </div>
+            <Link className="text-sm text-blue-600 hover:text-blue-800" to="/fixtures">View all</Link>
+          </div>
           <div className="space-y-3">
             {stats.recentFixtures?.map((match, index) => (
               <Link
@@ -163,7 +210,13 @@ const Dashboard = () => {
         </Card>
 
         <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Top Teams</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Top Teams</h3>
+              <div className="text-xs text-gray-500">Current season/division</div>
+            </div>
+            <Link className="text-sm text-blue-600 hover:text-blue-800" to="/team-standings">View all</Link>
+          </div>
           <div className="space-y-3">
             {stats.topTeams?.map((team, index) => (
               <div key={index} className="flex justify-between items-center py-2 border-b">
@@ -188,7 +241,17 @@ const Dashboard = () => {
 
       <Card>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Player Rankings (Singles)</h3>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Player Rankings (Singles)</h3>
+            <div className="text-xs text-gray-500">
+              Current season/division: <span className="font-medium">{stats.currentSeason?.name || 'N/A'}</span>
+              {stats.currentDivision?.name ? (
+                <>
+                  {' '}· <span className="font-medium">{stats.currentDivision.name}</span>
+                </>
+              ) : null}
+            </div>
+          </div>
           <Link className="text-sm text-blue-600 hover:text-blue-800" to="/player-rankings">
             View all
           </Link>
