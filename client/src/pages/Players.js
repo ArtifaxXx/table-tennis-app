@@ -3,9 +3,11 @@ import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const Players = () => {
   const { isAdmin } = useAuth();
+  const toast = useToast();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -45,8 +47,10 @@ const Players = () => {
       }
       fetchPlayers();
       resetForm();
+      toast.success('Save successful');
     } catch (error) {
       console.error('Error saving player:', error);
+      toast.error(error?.response?.data?.error || error.message);
     }
   };
 
@@ -65,8 +69,10 @@ const Players = () => {
       try {
         await axios.delete(`/api/players/${playerId}`);
         fetchPlayers();
+        toast.success('Delete successful');
       } catch (error) {
         console.error('Error deleting player:', error);
+        toast.error(error?.response?.data?.error || error.message);
       }
     }
   };
@@ -126,7 +132,7 @@ const Players = () => {
               </div>
             </div>
             <div className="flex space-x-3">
-              <button type="submit" className="btn btn-primary">
+              <button type="submit" className="btn btn-success">
                 {editingPlayer ? 'Update' : 'Add'} Player
               </button>
               <button type="button" onClick={resetForm} className="btn btn-secondary">

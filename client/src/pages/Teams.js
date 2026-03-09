@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const Teams = () => {
   const { isAdmin } = useAuth();
+  const toast = useToast();
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,10 +56,10 @@ const Teams = () => {
         contact_phone: contactPhone,
       });
       await fetchData();
-      alert('Contact saved');
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -65,7 +67,7 @@ const Teams = () => {
     if (!isAdmin) return;
     if (!selectedTeamId) return;
     if (!teamName.trim()) {
-      alert('Team name is required');
+      toast.error('Team name is required');
       return;
     }
 
@@ -74,10 +76,10 @@ const Teams = () => {
         name: teamName.trim(),
       });
       await fetchData();
-      alert('Team name saved');
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -93,9 +95,10 @@ const Teams = () => {
         setSelectedTeamId('');
       }
       await fetchData();
+      toast.success('Delete successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -112,9 +115,10 @@ const Teams = () => {
       setCreatingContactName('');
       setCreatingContactPhone('');
       await fetchData();
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -139,7 +143,7 @@ const Teams = () => {
     if (!isAdmin) return;
     if (!selectedTeamId) return;
     if (mainIds.some((x) => !x)) {
-      alert('Main roster must have 3 players');
+      toast.error('Main roster must have 3 players');
       return;
     }
 
@@ -152,10 +156,10 @@ const Teams = () => {
         subs,
       });
       await fetchData();
-      alert('Roster saved');
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -188,7 +192,7 @@ const Teams = () => {
               placeholder="Contact phone"
             />
           </div>
-          <button className="btn btn-primary" type="submit">Create</button>
+          <button className="btn btn-success" type="submit">Create</button>
         </form>
       )}
 
@@ -244,7 +248,7 @@ const Teams = () => {
                   </div>
                 </div>
                 {isAdmin && (
-                  <button className="btn btn-primary mt-3" onClick={onSaveTeamName}>
+                  <button className="btn btn-success mt-3" onClick={onSaveTeamName}>
                     Save Team Name
                   </button>
                 )}
@@ -273,7 +277,7 @@ const Teams = () => {
                   </div>
                 </div>
                 {isAdmin && (
-                  <button className="btn btn-primary mt-3" onClick={onSaveContact}>
+                  <button className="btn btn-success mt-3" onClick={onSaveContact}>
                     Save Contact
                   </button>
                 )}
@@ -328,7 +332,7 @@ const Teams = () => {
               </div>
 
               {isAdmin && (
-                <button className="btn btn-primary" onClick={onSaveRoster}>
+                <button className="btn btn-success" onClick={onSaveRoster}>
                   Save Roster
                 </button>
               )}

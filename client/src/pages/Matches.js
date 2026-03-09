@@ -219,7 +219,7 @@ const Matches = () => {
               </div>
             </div>
             <div className="flex space-x-3">
-              <button type="submit" className="btn btn-primary">
+              <button type="submit" className="btn btn-success">
                 {editingMatch ? 'Update' : 'Schedule'} Match
               </button>
               <button type="button" onClick={resetForm} className="btn btn-secondary">

@@ -11,28 +11,33 @@ import PlayerRankings from './pages/PlayerRankings';
 import Seasons from './pages/Seasons';
 import { DivisionProvider } from './context/DivisionContext';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import ToastViewport from './components/ToastViewport';
 
 function App() {
   return (
-    <AuthProvider>
-      <DivisionProvider>
-        <div className="min-h-screen bg-gray-50">
-          <Navbar />
-          <main className="container mx-auto px-4 py-8">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/players" element={<Players />} />
-              <Route path="/teams" element={<Teams />} />
-              <Route path="/fixtures" element={<Fixtures />} />
-              <Route path="/fixtures/:id" element={<FixtureDetail />} />
-              <Route path="/team-standings" element={<TeamStandings />} />
-              <Route path="/player-rankings" element={<PlayerRankings />} />
-              <Route path="/seasons" element={<Seasons />} />
-            </Routes>
-          </main>
-        </div>
-      </DivisionProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <DivisionProvider>
+          <div className="min-h-screen bg-gray-50">
+            <Navbar />
+            <main className="container mx-auto px-4 py-8">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/players" element={<Players />} />
+                <Route path="/teams" element={<Teams />} />
+                <Route path="/fixtures" element={<Fixtures />} />
+                <Route path="/fixtures/:id" element={<FixtureDetail />} />
+                <Route path="/team-standings" element={<TeamStandings />} />
+                <Route path="/player-rankings" element={<PlayerRankings />} />
+                <Route path="/seasons" element={<Seasons />} />
+              </Routes>
+            </main>
+            <ToastViewport />
+          </div>
+        </DivisionProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

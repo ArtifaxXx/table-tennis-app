@@ -1,21 +1,22 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Trophy, Users, Calendar, BarChart3, Home, UserCircle, Menu, X } from 'lucide-react';
 import { useDivisionContext } from '../context/DivisionContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const ADMIN_PASSWORD_KEY = 'tt-league:adminPassword:v1';
 
 const Navbar = () => {
   const location = useLocation();
   const auth = useAuth();
+  const toast = useToast();
   const [role, setRole] = useState('viewer');
   const [authOpen, setAuthOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [seedLoading, setSeedLoading] = useState(false);
 
@@ -49,15 +50,14 @@ const Navbar = () => {
 
   const changeAdminPassword = async () => {
     setAuthLoading(true);
-    setAuthError('');
     try {
       await axios.put('/api/auth/admin-password', { newPassword });
       window.localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
       await refreshRole();
       setNewPassword('');
-      setAuthError('Password updated');
+      toast.success('Password updated');
     } catch (e) {
-      setAuthError(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
     }
@@ -68,12 +68,11 @@ const Navbar = () => {
     if (!window.confirm('Seed data now? This will wipe existing data.')) return;
 
     setSeedLoading(true);
-    setAuthError('');
     try {
       await axios.post('/api/admin/seed', {});
-      setAuthError('Seed completed');
+      toast.success('Seed completed');
     } catch (e) {
-      setAuthError(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setSeedLoading(false);
     }
@@ -89,7 +88,6 @@ const Navbar = () => {
   }, [location.pathname]);
 
   const openAuth = () => {
-    setAuthError('');
     setPasswordInput('');
     setNewPassword('');
     setAuthOpen(true);
@@ -97,14 +95,12 @@ const Navbar = () => {
 
   const closeAuth = () => {
     setAuthOpen(false);
-    setAuthError('');
     setPasswordInput('');
     setNewPassword('');
   };
 
   const enableAdmin = async () => {
     setAuthLoading(true);
-    setAuthError('');
     try {
       window.localStorage.setItem(ADMIN_PASSWORD_KEY, passwordInput);
       await refreshRole();
@@ -112,7 +108,7 @@ const Navbar = () => {
       if (now?.data?.role !== 'admin') {
         window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
         setRole('viewer');
-        setAuthError('Incorrect password');
+        toast.error('Incorrect password');
         return;
       }
       closeAuth();
@@ -123,7 +119,7 @@ const Navbar = () => {
         // ignore
       }
       setRole('viewer');
-      setAuthError(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
     }
@@ -131,13 +127,12 @@ const Navbar = () => {
 
   const disableAdmin = async () => {
     setAuthLoading(true);
-    setAuthError('');
     try {
       window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
       await refreshRole();
       closeAuth();
     } catch (e) {
-      setAuthError(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
     }
@@ -270,7 +265,6 @@ const Navbar = () => {
             {role === 'admin' ? (
               <div className="space-y-4">
                 <div className="text-sm text-gray-700">You are currently signed in as admin.</div>
-                {authError && <div className="text-sm text-red-600">{authError}</div>}
 
                 <div className="border-t pt-4 space-y-2">
                   <div className="text-sm font-semibold text-gray-800">Change admin password</div>
@@ -283,7 +277,7 @@ const Navbar = () => {
                   />
                   <div className="flex justify-end">
                     <button
-                      className="btn btn-primary"
+                      className="btn btn-success"
                       type="button"
                       onClick={changeAdminPassword}
                       disabled={authLoading || !newPassword}
@@ -298,7 +292,7 @@ const Navbar = () => {
                   <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
                   <div className="flex justify-end">
                     <button
-                      className="btn btn-danger"
+                      className="btn btn-warning"
                       type="button"
                       onClick={seedData}
                       disabled={authLoading || seedLoading}
@@ -328,7 +322,6 @@ const Navbar = () => {
                   placeholder="Admin password"
                   autoFocus
                 />
-                {authError && <div className="text-sm text-red-600">{authError}</div>}
                 <div className="flex justify-end gap-2">
                   <button className="btn" type="button" onClick={closeAuth} disabled={authLoading}>
                     Cancel

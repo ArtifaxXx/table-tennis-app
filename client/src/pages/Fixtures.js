@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
+import { useToast } from '../context/ToastContext';
 
 const Fixtures = () => {
+  const toast = useToast();
   const [fixtures, setFixtures] = useState([]);
   const [loading, setLoading] = useState(true);
   const didInitRef = useRef(false);
@@ -51,9 +53,10 @@ const Fixtures = () => {
     try {
       const res = await axios.put(`/api/fixtures/${fixtureId}`, { match_date: asIso });
       setFixtures((prev) => prev.map((f) => (f.id === fixtureId ? res.data : f)));
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 

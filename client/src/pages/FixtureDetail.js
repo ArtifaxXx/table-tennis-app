@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const emptySet = () => ({ home_points: 0, away_points: 0 });
 
 const FixtureDetail = () => {
   const { isAdmin } = useAuth();
+  const toast = useToast();
   const { id } = useParams();
   const [fixture, setFixture] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -48,7 +50,7 @@ const FixtureDetail = () => {
         await refresh();
       } catch (e) {
         console.error(e);
-        alert(e?.response?.data?.error || e.message);
+        toast.error(e?.response?.data?.error || e.message);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -57,7 +59,7 @@ const FixtureDetail = () => {
     return () => {
       mounted = false;
     };
-  }, [refresh]);
+  }, [refresh, toast]);
 
   const saveLineup = async (side) => {
     if (!isAdmin) return;
@@ -65,10 +67,10 @@ const FixtureDetail = () => {
     try {
       await axios.put(`/api/fixtures/${id}/lineups/${side}`, { playerIds });
       await refresh();
-      alert('Lineup saved');
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -77,9 +79,10 @@ const FixtureDetail = () => {
     try {
       await axios.put(`/api/fixtures/${id}/games/${gameNumber}/sets`, { sets });
       await refresh();
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -90,7 +93,7 @@ const FixtureDetail = () => {
       <div className="card">
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold text-gray-800">{side === 'home' ? 'Home' : 'Away'} lineup</h3>
-          {isAdmin && <button className="btn btn-primary" onClick={() => saveLineup(side)}>Save</button>}
+          {isAdmin && <button className="btn btn-success" onClick={() => saveLineup(side)}>Save</button>}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

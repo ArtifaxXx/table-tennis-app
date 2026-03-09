@@ -3,10 +3,12 @@ import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const Seasons = () => {
   const { isAdmin } = useAuth();
   const { refreshSeasons, setSelectedSeasonId: selectSeason } = useDivisionContext();
+  const toast = useToast();
 
   const [seasons, setSeasons] = useState([]);
   const [activeSeason, setActiveSeason] = useState(null);
@@ -45,7 +47,7 @@ const Seasons = () => {
       setFixtureCounts(countsRes.data || {});
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setLoading(false);
     }
@@ -75,7 +77,7 @@ const Seasons = () => {
       setDivisionTeamSelections(Object.fromEntries(entries));
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setDivisionsLoading(false);
     }
@@ -101,7 +103,7 @@ const Seasons = () => {
       await openDivisions(managingSeasonId);
     } catch (e2) {
       console.error(e2);
-      alert(e2?.response?.data?.error || e2.message);
+      toast.error(e2?.response?.data?.error || e2.message);
     }
   };
 
@@ -127,12 +129,12 @@ const Seasons = () => {
         const ids = Array.from(divisionTeamSelections[d.id] || []);
         await axios.put(`/api/divisions/${d.id}/teams`, { teamIds: ids });
       }
-      alert('Division teams saved');
+      toast.success('Save successful');
       await openDivisions(managingSeasonId);
       setDivisionDirty(false);
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setDivisionSaving(false);
     }
@@ -153,9 +155,10 @@ const Seasons = () => {
       if (created?.data?.id) {
         await selectSeason(created.data.id);
       }
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -166,9 +169,10 @@ const Seasons = () => {
       await fetchData();
       await refreshSeasons();
       await selectSeason(id);
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -178,9 +182,10 @@ const Seasons = () => {
       await axios.post(`/api/team-seasons/${id}/reopen`, {});
       await fetchData();
       await refreshSeasons();
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -190,9 +195,10 @@ const Seasons = () => {
       await axios.post(`/api/team-seasons/${id}/stop`, {});
       await fetchData();
       await refreshSeasons();
+      toast.success('Save successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
@@ -203,23 +209,25 @@ const Seasons = () => {
       await axios.delete(`/api/team-seasons/${id}`);
       await fetchData();
       await refreshSeasons();
+      toast.success('Delete successful');
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     }
   };
 
   const generateFixtures = async (seasonId) => {
     if (!seasonId) return;
     if (!isAdmin) return;
+    if (!window.confirm('Generate fixtures now? This will create the season schedule.')) return;
     setGenerating(true);
     try {
       await axios.post('/api/fixtures/generate-schedule', { team_season_id: seasonId });
-      alert('Fixtures generated');
+      toast.success('Fixtures generated');
       await fetchData();
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.error || e.message);
+      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setGenerating(false);
     }
@@ -279,7 +287,7 @@ const Seasons = () => {
                   </option>
                 ))}
             </select>
-            <button className="btn btn-primary" type="submit">Create</button>
+            <button className="btn btn-success" type="submit">Create</button>
           </form>
         </div>
       )}
@@ -311,17 +319,17 @@ const Seasons = () => {
                         Divisions
                       </button>
                       {isAdmin && s.status === 'draft' && (fixtureCounts[s.id] || 0) === 0 && (
-                        <button className="btn btn-primary" onClick={() => generateFixtures(s.id)} disabled={generating}>
+                        <button className="btn btn-warning" onClick={() => generateFixtures(s.id)} disabled={generating}>
                           {generating ? 'Generating...' : 'Generate Fixtures'}
                         </button>
                       )}
                       {isAdmin && s.status === 'ready' && (
-                        <button className="btn btn-primary" onClick={() => startSeason(s.id)}>
+                        <button className="btn btn-success" onClick={() => startSeason(s.id)}>
                           Start
                         </button>
                       )}
                       {isAdmin && s.status === 'active' && (
-                        <button className="btn btn-secondary" onClick={() => finishSeason(s.id)}>
+                        <button className="btn btn-warning" onClick={() => finishSeason(s.id)}>
                           Close
                         </button>
                       )}
@@ -342,7 +350,7 @@ const Seasons = () => {
                       })()}
 
                       {isAdmin && s.status !== 'active' && (
-                        <button className="btn btn-secondary" onClick={() => deleteSeason(s.id)}>
+                        <button className="btn btn-danger" onClick={() => deleteSeason(s.id)}>
                           Delete
                         </button>
                       )}
@@ -365,7 +373,7 @@ const Seasons = () => {
             <div className="flex gap-2">
               {isAdmin && !isManagingLocked && (
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-success"
                   onClick={saveAllDivisionTeams}
                   disabled={divisionsLoading || divisionSaving || !divisionDirty}
                 >
@@ -385,7 +393,7 @@ const Seasons = () => {
               placeholder="New division name (e.g. Premier, Division 1A)"
               disabled={isManagingLocked}
             />
-            <button className="btn btn-primary" type="submit" disabled={isManagingLocked || divisionsLoading || !divisionCreatingName.trim()}>
+            <button className="btn btn-success" type="submit" disabled={isManagingLocked || divisionsLoading || !divisionCreatingName.trim()}>
               Create Division
             </button>
             </form>
