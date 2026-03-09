@@ -5,8 +5,17 @@ class TeamManager {
     this.db = database;
   }
 
+  normalizeHomeDay(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 5) {
+      throw new Error('home_day must be a weekday number 1-5 (Mon-Fri) or null');
+    }
+    return n;
+  }
+
   async createTeam(teamData) {
-    const { name, contact_name, contact_phone } = teamData;
+    const { name, contact_name, contact_phone, home_day } = teamData;
 
     if (!name) {
       throw new Error('Team name is required');
@@ -14,8 +23,8 @@ class TeamManager {
 
     const id = uuidv4();
     await this.db.run(
-      'INSERT INTO teams (id, name, contact_name, contact_phone) VALUES (?, ?, ?, ?)',
-      [id, name, contact_name || null, contact_phone || null]
+      'INSERT INTO teams (id, name, contact_name, contact_phone, home_day) VALUES (?, ?, ?, ?, ?)',
+      [id, name, contact_name || null, contact_phone || null, this.normalizeHomeDay(home_day)]
     );
 
     return this.getTeamById(id);
@@ -49,16 +58,28 @@ class TeamManager {
   }
 
   async updateTeam(id, teamData) {
-    const { name, contact_name, contact_phone } = teamData;
+    const { name, contact_name, contact_phone, home_day } = teamData;
+
+    const normalizedHomeDay = home_day === undefined ? undefined : this.normalizeHomeDay(home_day);
+
+    const shouldUpdateHomeDay = normalizedHomeDay !== undefined;
 
     const result = await this.db.run(
       `UPDATE teams
        SET name = COALESCE(?, name),
            contact_name = COALESCE(?, contact_name),
            contact_phone = COALESCE(?, contact_phone),
+           home_day = CASE WHEN ? = 1 THEN ? ELSE home_day END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND active = 1`,
-      [name, contact_name, contact_phone, id]
+      [
+        name,
+        contact_name,
+        contact_phone,
+        shouldUpdateHomeDay ? 1 : 0,
+        shouldUpdateHomeDay ? normalizedHomeDay : null,
+        id,
+      ]
     );
 
     if (result.changes === 0) {

@@ -295,12 +295,19 @@ async function seedDatabase(db) {
   await db.run('DELETE FROM seasons');
   await db.run('DELETE FROM players');
 
+  let teamSeedIndex = 0;
   for (const t of teams) {
+    // Assign most teams a preferred home day (Mon-Fri), leaving some teams without one.
+    // Deterministic distribution to keep seed stable.
+    const homeDay = (teamSeedIndex % 8 === 0) ? null : ((teamSeedIndex % 5) + 1);
     const team = await teamManager.createTeam({
       name: t.name,
       contact_name: t.contact_name,
       contact_phone: t.contact_phone,
+      home_day: homeDay,
     });
+
+    teamSeedIndex++;
 
     if (!createdTeamsByDivisionName.has(t.divisionName)) {
       createdTeamsByDivisionName.set(t.divisionName, []);
@@ -354,7 +361,13 @@ async function seedDatabase(db) {
   const years = [2024, 2025, 2026];
 
   for (const year of years) {
-    const season = await teamSeasonManager.createSeason({ name: String(year) });
+    const scheduleStart = new Date(Date.UTC(year, 0, 10, 0, 0, 0, 0)).toISOString();
+    const scheduleEnd = new Date(Date.UTC(year, 11, 15, 23, 59, 59, 999)).toISOString();
+    const season = await teamSeasonManager.createSeason({
+      name: String(year),
+      schedule_start_date: scheduleStart,
+      schedule_end_date: scheduleEnd,
+    });
 
     // createSeason() ensures at least one default division exists.
     // For deterministic seeding, remove any auto-created divisions and re-create our templates.
@@ -371,7 +384,6 @@ async function seedDatabase(db) {
       await setDivisionTeams(season.id, divisionId, teamIds);
     }
 
-    const startDate = new Date(Date.UTC(year, 0, 10, 19, 0, 0, 0)).toISOString();
     const allFixtures = [];
     for (const d of divisionIds) {
       const teamIds = createdTeamsByDivisionName.get(d.name) || [];
@@ -379,7 +391,8 @@ async function seedDatabase(db) {
         team_season_id: season.id,
         division_id: d.id,
         teamIds,
-        startDate,
+        schedule_start_date: scheduleStart,
+        schedule_end_date: scheduleEnd,
       });
       allFixtures.push(...fixtures);
     }
@@ -428,6 +441,14 @@ async function seedDatabase(db) {
   }
 
   const allTeams = await db.all('SELECT id, name FROM teams ORDER BY name');
+  const homeDayCounts = await db.all(
+    `SELECT COALESCE(home_day, -1) as home_day, COUNT(*) as count
+     FROM teams
+     WHERE active = 1
+     GROUP BY COALESCE(home_day, -1)
+     ORDER BY home_day`,
+    []
+  );
   const allPlayers = await db.get('SELECT COUNT(*) as count FROM players');
   const allTeamSeasons = await db.all('SELECT name, status FROM team_seasons ORDER BY name');
   const fixtureCounts = await db.all(
@@ -451,16 +472,16 @@ async function seedDatabase(db) {
     []
   );
 
-  console.log('Seed completed');
-  console.log(`Teams: ${allTeams.length}`);
-  console.log(`Players: ${allPlayers.count}`);
-  console.log('Team seasons:');
+  console.log('Seed completed successfully');
+  console.log(`Created ${allTeams.length} teams and ${allPlayers.count} players`);
+  console.log('Team home day distribution (home_day: count, -1 = none):', homeDayCounts);
+  console.log('Seasons:', allTeamSeasons);
+  console.log('Fixtures:', fixtureCounts);
   allTeamSeasons.forEach((s) => console.log(`- ${s.name} (${s.status})`));
   console.log('Fixtures per season:');
   fixtureCounts.forEach((r) => console.log(`- ${r.season_name} (${r.season_status}): ${r.fixture_count}`));
   console.log('Fixtures per division:');
   divisionCounts.forEach((r) => console.log(`- ${r.season_name} / ${r.division_name}: ${r.fixture_count}`));
-  console.log('Team list:');
   allTeams.forEach((t) => console.log(`- ${t.name}`));
 
   try {

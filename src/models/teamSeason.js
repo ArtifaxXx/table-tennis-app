@@ -5,6 +5,20 @@ class TeamSeasonManager {
     this.db = database;
   }
 
+  normalizeScheduleStart(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new Error('schedule_start_date is invalid');
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  }
+
+  normalizeScheduleEnd(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new Error('schedule_end_date is invalid');
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+  }
+
   async getAllSeasons() {
     return this.db.all(
       `SELECT *
@@ -38,8 +52,17 @@ class TeamSeasonManager {
     );
   }
 
-  async createSeason({ name, copyFromSeasonId } = {}) {
+  async createSeason({ name, copyFromSeasonId, schedule_start_date, schedule_end_date } = {}) {
     if (!name) throw new Error('Season name is required');
+
+    if (!schedule_start_date) throw new Error('schedule_start_date is required');
+    if (!schedule_end_date) throw new Error('schedule_end_date is required');
+
+    const start = this.normalizeScheduleStart(schedule_start_date);
+    const end = this.normalizeScheduleEnd(schedule_end_date);
+    if (!start) throw new Error('schedule_start_date is invalid');
+    if (!end) throw new Error('schedule_end_date is invalid');
+    if (end.getTime() < start.getTime()) throw new Error('schedule_end_date must be after schedule_start_date');
 
     const id = uuidv4();
     const trimmedName = String(name).trim();
@@ -48,9 +71,9 @@ class TeamSeasonManager {
     await this.db.run('BEGIN TRANSACTION');
     try {
       await this.db.run(
-        `INSERT INTO team_seasons (id, name, status)
-         VALUES (?, ?, 'draft')`,
-        [id, trimmedName]
+        `INSERT INTO team_seasons (id, name, status, schedule_start_date, schedule_end_date)
+         VALUES (?, ?, 'draft', ?, ?)`,
+        [id, trimmedName, start.toISOString(), end.toISOString()]
       );
 
       if (copyFromSeasonId) {

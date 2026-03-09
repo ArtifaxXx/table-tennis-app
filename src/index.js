@@ -469,6 +469,17 @@ app.post('/api/fixtures/generate-schedule', async (req, res) => {
       throw new Error('team_season_id is required');
     }
 
+    const season = await teamSeasonManager.getSeasonById(team_season_id);
+    if (!season) {
+      throw new Error('Season not found');
+    }
+
+    const scheduleStartDate = (req.body && req.body.schedule_start_date) ? req.body.schedule_start_date : season.schedule_start_date;
+    const scheduleEndDate = (req.body && req.body.schedule_end_date) ? req.body.schedule_end_date : season.schedule_end_date;
+    if (!scheduleStartDate || !scheduleEndDate) {
+      throw new Error('Season schedule window is not set. Provide schedule_start_date and schedule_end_date.');
+    }
+
     const divisions = await teamSeasonDivisionManager.getDivisionsBySeason(team_season_id);
     if (!divisions || divisions.length === 0) {
       throw new Error('No divisions configured for this season');
@@ -485,6 +496,8 @@ app.post('/api/fixtures/generate-schedule', async (req, res) => {
         team_season_id,
         division_id: d.id,
         teamIds,
+        schedule_start_date: scheduleStartDate,
+        schedule_end_date: scheduleEndDate,
       });
       allFixtures.push(...fixtures);
     }

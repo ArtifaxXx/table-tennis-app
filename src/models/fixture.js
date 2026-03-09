@@ -1,5 +1,192 @@
 const { v4: uuidv4 } = require('uuid');
 
+function startOfDayUtc(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+}
+
+function dateKeyUtc(date) {
+  const d = startOfDayUtc(date);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addDaysUtc(date, days) {
+  const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function weekdayIso1to7Utc(date) {
+  // JS: 0=Sun..6=Sat => ISO: 1=Mon..7=Sun
+  const js = date.getUTCDay();
+  return js === 0 ? 7 : js;
+}
+
+function nthWeekdayOfMonthUtc(year, monthIndex0, isoWeekday, n) {
+  // monthIndex0: 0=Jan
+  const first = new Date(Date.UTC(year, monthIndex0, 1, 0, 0, 0, 0));
+  const firstIso = weekdayIso1to7Utc(first);
+  const delta = (isoWeekday - firstIso + 7) % 7;
+  const day = 1 + delta + (n - 1) * 7;
+  return new Date(Date.UTC(year, monthIndex0, day, 0, 0, 0, 0));
+}
+
+function lastWeekdayOfMonthUtc(year, monthIndex0, isoWeekday) {
+  const last = new Date(Date.UTC(year, monthIndex0 + 1, 0, 0, 0, 0, 0));
+  const lastIso = weekdayIso1to7Utc(last);
+  const deltaBack = (lastIso - isoWeekday + 7) % 7;
+  return new Date(Date.UTC(year, monthIndex0, last.getUTCDate() - deltaBack, 0, 0, 0, 0));
+}
+
+function easterSundayUtc(year) {
+  // Anonymous Gregorian algorithm
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31); // 3=March, 4=April
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function observedIfWeekendUtc(date) {
+  const iso = weekdayIso1to7Utc(date);
+  if (iso === 6) return addDaysUtc(date, 2); // Sat -> Mon
+  if (iso === 7) return addDaysUtc(date, 1); // Sun -> Mon
+  return date;
+}
+
+function getIrishPublicHolidayKeysUtc(year) {
+  const keys = new Set();
+
+  // New Year's Day
+  keys.add(dateKeyUtc(observedIfWeekendUtc(new Date(Date.UTC(year, 0, 1)))));
+
+  // St Brigid's Day (first Monday in Feb) - modern Irish public holiday
+  keys.add(dateKeyUtc(nthWeekdayOfMonthUtc(year, 1, 1, 1)));
+
+  // St Patrick's Day (observed)
+  keys.add(dateKeyUtc(observedIfWeekendUtc(new Date(Date.UTC(year, 2, 17)))));
+
+  // Easter Monday
+  const easter = easterSundayUtc(year);
+  keys.add(dateKeyUtc(addDaysUtc(easter, 1)));
+
+  // May Day - first Monday in May
+  keys.add(dateKeyUtc(nthWeekdayOfMonthUtc(year, 4, 1, 1)));
+
+  // June Holiday - first Monday in June
+  keys.add(dateKeyUtc(nthWeekdayOfMonthUtc(year, 5, 1, 1)));
+
+  // August Holiday - first Monday in August
+  keys.add(dateKeyUtc(nthWeekdayOfMonthUtc(year, 7, 1, 1)));
+
+  // October Holiday - last Monday in October
+  keys.add(dateKeyUtc(lastWeekdayOfMonthUtc(year, 9, 1)));
+
+  // Christmas Day + St Stephen's Day (observed)
+  keys.add(dateKeyUtc(observedIfWeekendUtc(new Date(Date.UTC(year, 11, 25)))));
+  keys.add(dateKeyUtc(observedIfWeekendUtc(new Date(Date.UTC(year, 11, 26)))));
+
+  return keys;
+}
+
+function isChristmasBlackoutUtc(date) {
+  const y = date.getUTCFullYear();
+  const key = dateKeyUtc(date);
+  const start = dateKeyUtc(new Date(Date.UTC(y, 11, 25, 0, 0, 0, 0)));
+  const end = dateKeyUtc(new Date(Date.UTC(y + 1, 0, 10, 0, 0, 0, 0)));
+  // Compare using actual dates for correctness across years
+  const d = startOfDayUtc(date).getTime();
+  const s = startOfDayUtc(new Date(Date.UTC(y, 11, 25))).getTime();
+  const e = startOfDayUtc(new Date(Date.UTC(y + 1, 0, 10))).getTime();
+  return d >= s && d <= e && (key >= start || key <= end);
+}
+
+function buildAllowedDatesUtc({ scheduleStart, scheduleEnd }) {
+  const start = startOfDayUtc(scheduleStart);
+  const end = startOfDayUtc(scheduleEnd);
+  if (end.getTime() < start.getTime()) return [];
+
+  const years = new Set([start.getUTCFullYear(), end.getUTCFullYear()]);
+  // include adjacent year for Jan 10 blackout/holidays
+  years.add(start.getUTCFullYear() + 1);
+  years.add(end.getUTCFullYear() + 1);
+
+  const holidayKeys = new Set();
+  for (const y of years) {
+    for (const k of getIrishPublicHolidayKeysUtc(y)) holidayKeys.add(k);
+  }
+
+  const out = [];
+  for (let d = start; d.getTime() <= end.getTime(); d = addDaysUtc(d, 1)) {
+    const iso = weekdayIso1to7Utc(d);
+    // "random weekdays" fallback implies weekdays only
+    const isWeekday = iso >= 1 && iso <= 5;
+    if (!isWeekday) continue;
+    if (holidayKeys.has(dateKeyUtc(d))) continue;
+    if (isChristmasBlackoutUtc(d)) continue;
+
+    const match = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 19, 0, 0, 0));
+    out.push(match);
+  }
+  return out;
+}
+
+function buildRoundRobinRounds(teamIds) {
+  const ids = [...teamIds];
+  if (ids.length < 2) return [];
+
+  // Circle method. Add BYE if odd.
+  const hasBye = ids.length % 2 === 1;
+  if (hasBye) ids.push(null);
+
+  const n = ids.length;
+  const rounds = [];
+  let arr = [...ids];
+
+  for (let r = 0; r < n - 1; r++) {
+    const pairs = [];
+    for (let i = 0; i < n / 2; i++) {
+      const a = arr[i];
+      const b = arr[n - 1 - i];
+      if (a != null && b != null) pairs.push([a, b]);
+    }
+    rounds.push(pairs);
+
+    // rotate all but first
+    const fixed = arr[0];
+    const rest = arr.slice(1);
+    rest.unshift(rest.pop());
+    arr = [fixed, ...rest];
+  }
+
+  return rounds;
+}
+
+function frontLoadedTargetIndices(roundCount, dateCount) {
+  if (roundCount <= 1) return [0];
+  const max = Math.max(0, dateCount - 1);
+  const p = 2.0; // >1 => front-load (more rounds earlier)
+  const out = [];
+  for (let r = 0; r < roundCount; r++) {
+    const t = r / (roundCount - 1);
+    const idx = Math.floor(Math.pow(t, p) * max);
+    out.push(Math.min(max, Math.max(0, idx)));
+  }
+  return out;
+}
+
 class FixtureManager {
   constructor(database) {
     this.db = database;
@@ -103,7 +290,7 @@ class FixtureManager {
   }
 
   async generateDoubleRoundRobinSchedule(options = {}) {
-    const { startDate, team_season_id, division_id, teamIds } = options;
+    const { team_season_id, division_id, teamIds, schedule_start_date, schedule_end_date } = options;
 
     if (!team_season_id) {
       throw new Error('team_season_id is required');
@@ -125,30 +312,127 @@ class FixtureManager {
       throw new Error('At least 2 active teams are required');
     }
 
-    const fixtures = [];
-    let dayOffset = 0;
+    const scheduleStart = schedule_start_date ? new Date(schedule_start_date) : null;
+    const scheduleEnd = schedule_end_date ? new Date(schedule_end_date) : null;
+    if (!scheduleStart || Number.isNaN(scheduleStart.getTime())) {
+      throw new Error('schedule_start_date is required and must be a valid date');
+    }
+    if (!scheduleEnd || Number.isNaN(scheduleEnd.getTime())) {
+      throw new Error('schedule_end_date is required and must be a valid date');
+    }
 
-    for (let i = 0; i < teams.length; i++) {
-      for (let j = i + 1; j < teams.length; j++) {
-        const a = teams[i];
-        const b = teams[j];
+    const allowedDates = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
+    if (allowedDates.length === 0) {
+      throw new Error('No available dates in scheduling window after exclusions');
+    }
 
-        const d1 = startDate ? new Date(startDate) : new Date();
-        d1.setDate(d1.getDate() + dayOffset);
-        d1.setHours(19, 0, 0, 0);
+    const teamById = new Map(teams.map((t) => [t.id, t]));
+    const rounds = buildRoundRobinRounds(teams.map((t) => t.id));
+    const secondLegRounds = rounds.map((pairs) => pairs.map(([a, b]) => [b, a]));
+    const allRounds = [...rounds, ...secondLegRounds];
 
-        const d2 = startDate ? new Date(startDate) : new Date();
-        d2.setDate(d2.getDate() + dayOffset + 7);
-        d2.setHours(19, 0, 0, 0);
+    const targetIdxByRound = frontLoadedTargetIndices(allRounds.length, allowedDates.length);
+    const usedTeamsByDateKey = new Map();
+    const lastMatchTimeByTeam = new Map();
 
-        fixtures.push(await this.createFixture({ team_season_id, division_id, home_team_id: a.id, away_team_id: b.id, match_date: d1.toISOString() }));
-        fixtures.push(await this.createFixture({ team_season_id, division_id, home_team_id: b.id, away_team_id: a.id, match_date: d2.toISOString() }));
+    const created = [];
 
-        dayOffset += 7;
+    for (let r = 0; r < allRounds.length; r++) {
+      const pairs = allRounds[r];
+      // Schedule each match in this round near the target index.
+      for (const [homeId, awayId] of pairs) {
+        const home = teamById.get(homeId);
+        const away = teamById.get(awayId);
+        if (!home || !away) continue;
+
+        const preferredHomeDay = home.home_day == null ? null : Number(home.home_day);
+        const baseIdx = targetIdxByRound[r] || 0;
+
+        let best = null;
+        let bestScore = Infinity;
+
+        const maxRadius = Math.max(allowedDates.length, 60);
+        const tryPick = (requirePreferredDay) => {
+          best = null;
+          bestScore = Infinity;
+
+          for (let radius = 0; radius <= maxRadius; radius++) {
+            const candidates = [];
+            if (baseIdx - radius >= 0) candidates.push(baseIdx - radius);
+            if (radius > 0 && baseIdx + radius < allowedDates.length) candidates.push(baseIdx + radius);
+
+            for (const idx of candidates) {
+              const dt = allowedDates[idx];
+              const dk = dateKeyUtc(dt);
+              const usedTeams = usedTeamsByDateKey.get(dk) || new Set();
+              if (usedTeams.has(homeId) || usedTeams.has(awayId)) continue;
+
+              const iso = weekdayIso1to7Utc(dt);
+              if (requirePreferredDay && preferredHomeDay && iso !== preferredHomeDay) continue;
+
+              const lastHome = lastMatchTimeByTeam.get(homeId);
+              const lastAway = lastMatchTimeByTeam.get(awayId);
+              const dayMs = 24 * 60 * 60 * 1000;
+              const gapHomeDays = lastHome ? Math.abs((dt.getTime() - lastHome) / dayMs) : null;
+              const gapAwayDays = lastAway ? Math.abs((dt.getTime() - lastAway) / dayMs) : null;
+
+              // Prefer ~7 days between matches if possible.
+              const gapPenalty =
+                (gapHomeDays == null ? 0 : Math.abs(gapHomeDays - 7)) +
+                (gapAwayDays == null ? 0 : Math.abs(gapAwayDays - 7));
+
+              // Slightly prefer earlier dates for front-loading.
+              const earlyPenalty = idx * 0.02;
+
+              // If we are not requiring the preferred day, still heavily prefer it.
+              const homeDayPenalty = preferredHomeDay && iso !== preferredHomeDay ? 1000 : 0;
+
+              const score = homeDayPenalty + gapPenalty + earlyPenalty;
+              if (score < bestScore) {
+                bestScore = score;
+                best = dt;
+              }
+            }
+
+            if (best) break;
+          }
+
+          return best;
+        };
+
+        // Phase 1: if home team has a preferred home day, try to place ONLY on that weekday.
+        if (preferredHomeDay) {
+          tryPick(true);
+        }
+        // Phase 2: fallback to any allowed weekday (but still heavily prefers home day).
+        if (!best) {
+          tryPick(false);
+        }
+
+        if (!best) {
+          throw new Error('Unable to schedule all fixtures within the window');
+        }
+
+        const dk = dateKeyUtc(best);
+        if (!usedTeamsByDateKey.has(dk)) usedTeamsByDateKey.set(dk, new Set());
+        usedTeamsByDateKey.get(dk).add(homeId);
+        usedTeamsByDateKey.get(dk).add(awayId);
+        lastMatchTimeByTeam.set(homeId, best.getTime());
+        lastMatchTimeByTeam.set(awayId, best.getTime());
+
+        created.push(
+          await this.createFixture({
+            team_season_id,
+            division_id,
+            home_team_id: homeId,
+            away_team_id: awayId,
+            match_date: best.toISOString(),
+          })
+        );
       }
     }
 
-    return fixtures;
+    return created;
   }
 
   async getFixtureLineups(fixtureId) {

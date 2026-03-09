@@ -12,10 +12,23 @@ const Seasons = () => {
   const { refreshSeasons, setSelectedSeasonId: selectSeason } = useDivisionContext();
   const toast = useToast();
 
+  const dateInputToUtcIso = (value, options = {}) => {
+    if (!value) return null;
+    const { endOfDay = false } = options;
+    const [y, m, d] = String(value).split('-').map((x) => Number(x));
+    if (!y || !m || !d) return null;
+    if (endOfDay) {
+      return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999)).toISOString();
+    }
+    return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0)).toISOString();
+  };
+
   const [seasons, setSeasons] = useState([]);
   const [activeSeason, setActiveSeason] = useState(null);
   const [loading, setLoading] = useState(true);
   const [creatingName, setCreatingName] = useState('');
+  const [creatingScheduleStart, setCreatingScheduleStart] = useState('');
+  const [creatingScheduleEnd, setCreatingScheduleEnd] = useState('');
   const [copyFromSeasonId, setCopyFromSeasonId] = useState('');
   const [generating, setGenerating] = useState(false);
   const [fixtureCounts, setFixtureCounts] = useState({});
@@ -146,11 +159,27 @@ const Seasons = () => {
     e.preventDefault();
     if (!isAdmin) return;
     try {
+      if (!creatingScheduleStart || !creatingScheduleEnd) {
+        toast.error('Start and end dates are required');
+        return;
+      }
+
+      const startIso = dateInputToUtcIso(creatingScheduleStart);
+      const endIso = dateInputToUtcIso(creatingScheduleEnd, { endOfDay: true });
+      if (!startIso || !endIso) {
+        toast.error('Invalid start or end date');
+        return;
+      }
+
       const created = await axios.post('/api/team-seasons', {
         name: creatingName,
         copyFromSeasonId: copyFromSeasonId || undefined,
+        schedule_start_date: startIso,
+        schedule_end_date: endIso,
       });
       setCreatingName('');
+      setCreatingScheduleStart('');
+      setCreatingScheduleEnd('');
       setCopyFromSeasonId('');
       await fetchData();
       await refreshSeasons();
@@ -269,22 +298,29 @@ const Seasons = () => {
       {isAdmin && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Create Season</h3>
-          <form onSubmit={createSeason} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <form onSubmit={createSeason} className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <input
               className="input"
               value={creatingName}
               onChange={(e) => setCreatingName(e.target.value)}
               placeholder="Season name"
             />
-            <select
+            <input
               className="input"
-              value={copyFromSeasonId}
-              onChange={(e) => setCopyFromSeasonId(e.target.value)}
-            >
-              <option value="">Copy divisions/teams from (optional)</option>
+              type="date"
+              value={creatingScheduleStart}
+              onChange={(e) => setCreatingScheduleStart(e.target.value)}
+            />
+            <input
+              className="input"
+              type="date"
+              value={creatingScheduleEnd}
+              onChange={(e) => setCreatingScheduleEnd(e.target.value)}
+            />
+            <select className="input" value={copyFromSeasonId} onChange={(e) => setCopyFromSeasonId(e.target.value)}>
+              <option value="">(Optional) Copy divisions + teams from season</option>
               {seasons
-                .slice()
-                .sort((a, b) => String(b.name).localeCompare(String(a.name)))
+                .filter((s) => s.id !== activeSeason?.id)
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -305,8 +341,8 @@ const Seasons = () => {
               <tr>
                 <th className="cursor-pointer" onClick={() => requestSort('name')}>Name{sortIndicator(sortConfig, 'name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('start_date')}>Start{sortIndicator(sortConfig, 'start_date')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('end_date')}>End{sortIndicator(sortConfig, 'end_date')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('schedule_start_date')}>Start{sortIndicator(sortConfig, 'schedule_start_date')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('schedule_end_date')}>End{sortIndicator(sortConfig, 'schedule_end_date')}</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -315,8 +351,8 @@ const Seasons = () => {
                 <tr key={s.id}>
                   <td className="font-medium">{s.name}</td>
                   <td>{badge(s.status)}</td>
-                  <td>{s.start_date ? new Date(s.start_date).toLocaleDateString() : '-'}</td>
-                  <td>{s.end_date ? new Date(s.end_date).toLocaleDateString() : '-'}</td>
+                  <td>{s.schedule_start_date ? new Date(s.schedule_start_date).toLocaleDateString() : '-'}</td>
+                  <td>{s.schedule_end_date ? new Date(s.schedule_end_date).toLocaleDateString() : '-'}</td>
                   <td>
                     <div className="flex gap-2">
                       <button className="btn btn-secondary" onClick={() => openDivisions(s.id)}>

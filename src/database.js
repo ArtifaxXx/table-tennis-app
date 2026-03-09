@@ -61,6 +61,27 @@ class Database {
     );
   }
 
+  async ensureTeamsHomeDayColumn() {
+    const columns = await this.all('PRAGMA table_info(teams)');
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('home_day')) {
+      await this.run('ALTER TABLE teams ADD COLUMN home_day INTEGER');
+    }
+  }
+
+  async ensureTeamSeasonsScheduleWindowColumns() {
+    const columns = await this.all('PRAGMA table_info(team_seasons)');
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('schedule_start_date')) {
+      await this.run('ALTER TABLE team_seasons ADD COLUMN schedule_start_date DATETIME');
+    }
+    if (!columnNames.has('schedule_end_date')) {
+      await this.run('ALTER TABLE team_seasons ADD COLUMN schedule_end_date DATETIME');
+    }
+  }
+
   async initialize() {
     return new Promise((resolve, reject) => {
        const dbDir = path.dirname(this.dbPath);
@@ -98,6 +119,8 @@ class Database {
         status TEXT NOT NULL DEFAULT 'draft',
         start_date DATETIME,
         end_date DATETIME,
+        schedule_start_date DATETIME,
+        schedule_end_date DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
@@ -119,6 +142,7 @@ class Database {
         name TEXT NOT NULL UNIQUE,
         contact_name TEXT,
         contact_phone TEXT,
+        home_day INTEGER,
         active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -262,6 +286,9 @@ class Database {
     // Ensure team contact columns exist for older databases.
     await this.ensureTeamsContactColumns();
 
+    // Ensure teams.home_day exists for older databases.
+    await this.ensureTeamsHomeDayColumn();
+
     // Ensure fixtures.team_season_id exists for older databases.
     await this.ensureFixturesSeasonColumn();
 
@@ -270,6 +297,9 @@ class Database {
 
     // Migrate team season statuses.
     await this.ensureTeamSeasonConcludedStatus();
+
+    // Ensure team season schedule window columns exist for older databases.
+    await this.ensureTeamSeasonsScheduleWindowColumns();
 
     await this.ensureDefaultDivisionBackfill();
 

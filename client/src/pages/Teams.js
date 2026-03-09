@@ -14,10 +14,12 @@ const Teams = () => {
   const [creatingName, setCreatingName] = useState('');
   const [creatingContactName, setCreatingContactName] = useState('');
   const [creatingContactPhone, setCreatingContactPhone] = useState('');
+  const [creatingHomeDay, setCreatingHomeDay] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [teamName, setTeamName] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [homeDay, setHomeDay] = useState('');
   const [mainIds, setMainIds] = useState(['', '', '']);
   const [subIds, setSubIds] = useState(['', '', '']);
 
@@ -56,6 +58,7 @@ const Teams = () => {
       await axios.put(`/api/teams/${selectedTeamId}`, {
         contact_name: contactName,
         contact_phone: contactPhone,
+        home_day: homeDay === '' ? null : Number(homeDay),
       });
       await fetchData();
       toast.success('Save successful');
@@ -63,6 +66,18 @@ const Teams = () => {
       console.error(e);
       toast.error(e?.response?.data?.error || e.message);
     }
+  };
+
+  const homeDayLabel = (value) => {
+    const v = value == null ? '' : String(value);
+    const map = {
+      '1': 'Mon',
+      '2': 'Tue',
+      '3': 'Wed',
+      '4': 'Thu',
+      '5': 'Fri',
+    };
+    return map[v] || '-';
   };
 
   const onSaveTeamName = async () => {
@@ -76,6 +91,7 @@ const Teams = () => {
     try {
       await axios.put(`/api/teams/${selectedTeamId}`, {
         name: teamName.trim(),
+        home_day: homeDay === '' ? null : Number(homeDay),
       });
       await fetchData();
       toast.success('Save successful');
@@ -112,10 +128,12 @@ const Teams = () => {
         name: creatingName,
         contact_name: creatingContactName,
         contact_phone: creatingContactPhone,
+        home_day: creatingHomeDay === '' ? null : Number(creatingHomeDay),
       });
       setCreatingName('');
       setCreatingContactName('');
       setCreatingContactPhone('');
+      setCreatingHomeDay('');
       await fetchData();
       toast.success('Save successful');
     } catch (e) {
@@ -129,6 +147,7 @@ const Teams = () => {
     setTeamName(team.name || '');
     setContactName(team.contact_name || '');
     setContactPhone(team.contact_phone || '');
+    setHomeDay(team.home_day == null ? '' : String(team.home_day));
     const mains = team.roster.filter((r) => r.slot >= 1 && r.slot <= 3).sort((a, b) => a.slot - b.slot);
     const subs = team.roster.filter((r) => r.slot >= 4 && r.slot <= 6).sort((a, b) => a.slot - b.slot);
     setMainIds([mains[0]?.player_id || '', mains[1]?.player_id || '', mains[2]?.player_id || '']);
@@ -175,7 +194,7 @@ const Teams = () => {
         <Card>
           <form onSubmit={onCreateTeam} className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800">Create Team</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input
               className="input"
               value={creatingName}
@@ -194,6 +213,14 @@ const Teams = () => {
               onChange={(e) => setCreatingContactPhone(e.target.value)}
               placeholder="Contact phone"
             />
+            <select className="input" value={creatingHomeDay} onChange={(e) => setCreatingHomeDay(e.target.value)}>
+              <option value="">Home day (optional)</option>
+              <option value="1">Monday</option>
+              <option value="2">Tuesday</option>
+              <option value="3">Wednesday</option>
+              <option value="4">Thursday</option>
+              <option value="5">Friday</option>
+            </select>
           </div>
           <button className="btn btn-success" type="submit">Create</button>
           </form>
@@ -220,6 +247,7 @@ const Teams = () => {
                         {t.contact_name ? t.contact_name : ''}{t.contact_name && t.contact_phone ? ' · ' : ''}{t.contact_phone ? t.contact_phone : ''}
                       </div>
                     )}
+                    <div className="text-xs text-gray-500 mt-1">Home day: {homeDayLabel(t.home_day)}</div>
                   </button>
                   {isAdmin && (
                     <button className="btn btn-danger ml-3" onClick={() => onDeleteTeam(t)}>
@@ -238,18 +266,22 @@ const Teams = () => {
           {!selectedTeam && <div className="text-gray-500">Select a team to edit roster.</div>}
           {selectedTeam && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-gray-800">{selectedTeam.name}</div>
+                <button className="btn btn-danger" onClick={() => onDeleteTeam(selectedTeam)}>
+                  Delete Team
+                </button>
+              </div>
+
               <div>
-                <div className="font-medium text-gray-700 mb-2">Team</div>
+                <div className="font-medium text-gray-700 mb-2">Team Name</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Team name</label>
-                    <input
-                      className="input"
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                      disabled={!isAdmin}
-                    />
-                  </div>
+                  <input
+                    className="input"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    disabled={!isAdmin}
+                  />
                 </div>
                 {isAdmin && (
                   <button className="btn btn-success mt-3" onClick={onSaveTeamName}>
@@ -260,7 +292,7 @@ const Teams = () => {
 
               <div>
                 <div className="font-medium text-gray-700 mb-2">Team Contact</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Contact name</label>
                     <input
@@ -279,10 +311,21 @@ const Teams = () => {
                       disabled={!isAdmin}
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Home day (optional)</label>
+                    <select className="input" value={homeDay} onChange={(e) => setHomeDay(e.target.value)} disabled={!isAdmin}>
+                      <option value="">None</option>
+                      <option value="1">Monday</option>
+                      <option value="2">Tuesday</option>
+                      <option value="3">Wednesday</option>
+                      <option value="4">Thursday</option>
+                      <option value="5">Friday</option>
+                    </select>
+                  </div>
                 </div>
                 {isAdmin && (
                   <button className="btn btn-success mt-3" onClick={onSaveContact}>
-                    Save Contact
+                    Save Contact / Home Day
                   </button>
                 )}
               </div>
