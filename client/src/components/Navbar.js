@@ -17,6 +17,7 @@ const Navbar = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [seedLoading, setSeedLoading] = useState(false);
 
   const {
     divisions,
@@ -59,6 +60,22 @@ const Navbar = () => {
       setAuthError(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const seedData = async () => {
+    if (seedLoading) return;
+    if (!window.confirm('Seed data now? This will wipe existing data.')) return;
+
+    setSeedLoading(true);
+    setAuthError('');
+    try {
+      await axios.post('/api/admin/seed', {});
+      setAuthError('Seed completed');
+    } catch (e) {
+      setAuthError(e?.response?.data?.error || e.message);
+    } finally {
+      setSeedLoading(false);
     }
   };
 
@@ -272,6 +289,21 @@ const Navbar = () => {
                       disabled={authLoading || !newPassword}
                     >
                       Update Password
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 space-y-2">
+                  <div className="text-sm font-semibold text-gray-800">Seed data</div>
+                  <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
+                  <div className="flex justify-end">
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      onClick={seedData}
+                      disabled={authLoading || seedLoading}
+                    >
+                      {seedLoading ? 'Seeding...' : 'Seed Data'}
                     </button>
                   </div>
                 </div>

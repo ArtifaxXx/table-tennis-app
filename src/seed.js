@@ -4,10 +4,7 @@ const TeamSeasonManager = require('./models/teamSeason');
 const FixtureManager = require('./models/fixture');
 const { v4: uuidv4 } = require('uuid');
 
-async function seed() {
-  const db = new Database();
-  await db.initialize();
-
+async function seedDatabase(db) {
   // Clean existing data (team league + legacy individual matches)
   // Order matters due to foreign keys.
   await db.run('DELETE FROM fixture_game_sets');
@@ -461,11 +458,23 @@ async function seed() {
   divisionCounts.forEach((r) => console.log(`- ${r.season_name} / ${r.division_name}: ${r.fixture_count}`));
   console.log('Team list:');
   allTeams.forEach((t) => console.log(`- ${t.name}`));
-
-  await db.close();
 }
 
-seed().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+async function seed() {
+  const db = new Database();
+  await db.initialize();
+  try {
+    await seedDatabase(db);
+  } finally {
+    await db.close();
+  }
+}
+
+module.exports = { seed, seedDatabase };
+
+if (require.main === module) {
+  seed().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}

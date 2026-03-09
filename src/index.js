@@ -12,10 +12,12 @@ const FixtureManager = require('./models/fixture');
 const TeamLeagueManager = require('./models/teamLeague');
 const TeamSeasonManager = require('./models/teamSeason');
 const TeamSeasonDivisionManager = require('./models/teamSeasonDivision');
+const { seedDatabase } = require('./seed');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 let currentAdminPassword = null;
+let isSeeding = false;
 
 // Middleware
 app.use((req, res, next) => {
@@ -92,6 +94,17 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin access required' });
 }
 
+function requireSeedToken(req, res, next) {
+  const expected = process.env.SEED_TOKEN;
+  if (!expected) return next();
+
+  const token = req.get('X-Seed-Token');
+  if (!token || token !== expected) {
+    return res.status(403).json({ error: 'Invalid seed token' });
+  }
+  return next();
+}
+
 // API Routes
 app.get('/api/auth/role', async (req, res) => {
   res.json({ role: req.role || 'viewer' });
@@ -118,6 +131,22 @@ app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/seed', requireAdmin, requireSeedToken, async (req, res) => {
+  if (isSeeding) {
+    return res.status(409).json({ error: 'Seed already in progress' });
+  }
+
+  isSeeding = true;
+  try {
+    await seedDatabase(db);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    isSeeding = false;
   }
 });
 
