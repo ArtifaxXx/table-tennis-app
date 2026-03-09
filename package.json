@@ -1,0 +1,31 @@
+{
+  "name": "table-tennis-league",
+  "version": "1.0.0",
+  "description": "A comprehensive table tennis league management system",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "seed": "node src/seed.js",
+    "test": "jest",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm run build",
+    "build:server": "echo 'Server build complete'",
+    "client": "cd client && npm start"
+  },
+  "keywords": ["table-tennis", "league", "sports", "management"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.0",
+    "body-parser": "^1.20.2",
+    "helmet": "^7.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.6.2"
+  }
+}
