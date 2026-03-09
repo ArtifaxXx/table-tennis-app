@@ -38,7 +38,28 @@ class TeamLeagueManager {
               f.home_games_won,
               f.away_games_won,
               ht.name as home_team_name,
-              at.name as away_team_name
+              at.name as away_team_name,
+              CASE
+                WHEN (
+                  (SELECT COUNT(DISTINCT fl.day_rank)
+                   FROM fixture_lineups fl
+                   JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                   WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank IN (1,2,3)) < 3
+                  OR
+                  (SELECT COUNT(DISTINCT fl.day_rank)
+                   FROM fixture_lineups fl
+                   JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                   WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank IN (1,2,3)) < 3
+                ) THEN 'missing_lineups'
+                WHEN (SELECT COUNT(*) FROM fixture_games fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_games'
+                WHEN EXISTS (
+                  SELECT 1
+                  FROM fixture_games fg
+                  WHERE fg.fixture_id = f.id
+                    AND (SELECT COUNT(*) FROM fixture_game_sets s WHERE s.fixture_game_id = fg.id) < 3
+                ) THEN 'missing_sets'
+                ELSE 'complete'
+              END as completeness_status
        FROM fixtures f
        JOIN teams ht ON f.home_team_id = ht.id
        JOIN teams at ON f.away_team_id = at.id

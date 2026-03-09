@@ -18,6 +18,8 @@ const FixtureDetail = () => {
   const [homeSelection, setHomeSelection] = useState(['', '', '']);
   const [awaySelection, setAwaySelection] = useState(['', '', '']);
 
+  const canEdit = !!isAdmin && fixture?.season_status === 'active';
+
   const homeRoster = useMemo(() => {
     if (!fixture) return [];
     const team = teams.find((t) => t.id === fixture.home_team_id);
@@ -64,7 +66,7 @@ const FixtureDetail = () => {
   }, [refresh, toast]);
 
   const saveLineup = async (side) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     const playerIds = side === 'home' ? homeSelection : awaySelection;
     try {
       await axios.put(`/api/fixtures/${id}/lineups/${side}`, { playerIds });
@@ -77,7 +79,7 @@ const FixtureDetail = () => {
   };
 
   const updateGameSets = async (gameNumber, sets) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     try {
       await axios.put(`/api/fixtures/${id}/games/${gameNumber}/sets`, { sets });
       await refresh();
@@ -95,7 +97,7 @@ const FixtureDetail = () => {
       <Card>
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold text-gray-800">{side === 'home' ? 'Home' : 'Away'} lineup</h3>
-          {isAdmin && <button className="btn btn-success" onClick={() => saveLineup(side)}>Save</button>}
+          {canEdit && <button className="btn btn-success" onClick={() => saveLineup(side)}>Save</button>}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -110,7 +112,7 @@ const FixtureDetail = () => {
                   next[idx] = e.target.value;
                   setSelection(next);
                 }}
-                disabled={!isAdmin}
+                disabled={!canEdit}
               >
                 <option value="">Select player</option>
                 {rosterPlayers.map((p) => (
@@ -177,6 +179,7 @@ const FixtureDetail = () => {
             <GameCard
               key={g.id}
               game={g}
+              canEdit={canEdit}
               onSave={(sets) => updateGameSets(g.game_number, sets)}
             />
           ))}
@@ -186,8 +189,7 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, onSave }) => {
-  const { isAdmin } = useAuth();
+const GameCard = ({ game, canEdit, onSave }) => {
   const [sets, setSets] = useState(() => {
     if (Array.isArray(game.sets) && game.sets.length > 0) {
       return game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }));
@@ -209,13 +211,13 @@ const GameCard = ({ game, onSave }) => {
   };
 
   const addSet = () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (sets.length >= 5) return;
     setSets([...sets, emptySet()]);
   };
 
   const removeSet = () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (sets.length <= 3) return;
     setSets(sets.slice(0, sets.length - 1));
   };
@@ -247,7 +249,7 @@ const GameCard = ({ game, onSave }) => {
             {game.winner_side ? ` (winner: ${game.winner_side})` : ''}
           </div>
         </div>
-        {isAdmin && <button className="btn btn-success" onClick={() => onSave(sets)}>Save Sets</button>}
+        {canEdit && <button className="btn btn-success" onClick={() => onSave(sets)}>Save Sets</button>}
       </div>
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
@@ -260,7 +262,7 @@ const GameCard = ({ game, onSave }) => {
                 type="number"
                 min="0"
                 value={s.home_points}
-                disabled={!isAdmin}
+                disabled={!canEdit}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], home_points: parseInt(e.target.value || '0', 10) };
@@ -272,7 +274,7 @@ const GameCard = ({ game, onSave }) => {
                 type="number"
                 min="0"
                 value={s.away_points}
-                disabled={!isAdmin}
+                disabled={!canEdit}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], away_points: parseInt(e.target.value || '0', 10) };
@@ -284,7 +286,7 @@ const GameCard = ({ game, onSave }) => {
         ))}
       </div>
 
-      {isAdmin && (
+      {canEdit && (
         <div className="mt-3 flex gap-2">
           <button className="btn btn-secondary" onClick={addSet} disabled={sets.length >= 5}>+ Set</button>
           <button className="btn btn-secondary" onClick={removeSet} disabled={sets.length <= 3}>- Set</button>

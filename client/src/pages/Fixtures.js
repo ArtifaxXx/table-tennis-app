@@ -4,11 +4,13 @@ import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 
 const Fixtures = () => {
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const [fixtures, setFixtures] = useState([]);
   const [loading, setLoading] = useState(true);
   const didInitRef = useRef(false);
@@ -71,9 +73,32 @@ const Fixtures = () => {
     return <span className={`px-2 py-1 text-xs rounded-full ${styles[s] || styles.scheduled}`}>{s}</span>;
   };
 
+  const completenessBadge = (c) => {
+    const styles = {
+      complete: 'bg-green-50 text-green-800 border-green-200',
+      missing_lineups: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_games: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
+    };
+    const labels = {
+      complete: 'Complete',
+      missing_lineups: 'Lineups',
+      missing_games: 'Games',
+      missing_sets: 'Sets',
+    };
+    if (!c) return null;
+    return (
+      <span className={`px-2 py-1 text-xs rounded-full border ${styles[c] || styles.missing_lineups}`}>
+        {labels[c] || c}
+      </span>
+    );
+  };
+
   if (loading) return <div className="text-center py-8">Loading fixtures...</div>;
 
   const selectedSeasonName = seasons.find((s) => s.id === selectedSeasonId)?.name || 'Season';
+  const selectedSeason = seasons.find((s) => s.id === selectedSeasonId) || null;
+  const canEdit = !!isAdmin && selectedSeason?.status === 'active';
 
   return (
     <div className="space-y-6">
@@ -111,6 +136,7 @@ const Fixtures = () => {
                 <th className="cursor-pointer" onClick={() => requestSort('home_team_name')}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('away_team_name')}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>Complete?{sortIndicator(sortConfig, 'completeness_status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('home_games_won', (f) => (f.home_games_won || 0) - (f.away_games_won || 0))}>Result{sortIndicator(sortConfig, 'home_games_won')}</th>
                 <th></th>
               </tr>
@@ -124,11 +150,13 @@ const Fixtures = () => {
                       type="datetime-local"
                       value={toDateTimeLocalValue(f.match_date)}
                       onChange={(e) => updateFixtureDate(f.id, e.target.value)}
+                      disabled={!canEdit}
                     />
                   </td>
                   <td className="font-medium">{f.home_team_name}</td>
                   <td className="font-medium">{f.away_team_name}</td>
                   <td>{statusBadge(f.status)}</td>
+                  <td>{completenessBadge(f.completeness_status)}</td>
                   <td>
                     {f.status === 'completed' || f.status === 'in_progress'
                       ? `${f.home_games_won}-${f.away_games_won}`

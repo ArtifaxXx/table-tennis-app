@@ -83,6 +83,27 @@ const Dashboard = () => {
     return `Season ${s.name} - ${s.status}`;
   })();
 
+  const completenessBadge = (c) => {
+    const styles = {
+      complete: 'bg-green-50 text-green-800 border-green-200',
+      missing_lineups: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_games: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
+    };
+    const labels = {
+      complete: 'Complete',
+      missing_lineups: 'Lineups',
+      missing_games: 'Games',
+      missing_sets: 'Sets',
+    };
+    if (!c) return null;
+    return (
+      <span className={`ml-2 px-2 py-0.5 text-xs rounded-full border ${styles[c] || styles.missing_lineups}`}>
+        {labels[c] || c}
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -122,6 +143,7 @@ const Dashboard = () => {
                 <div>
                   <p className="font-medium text-gray-800">
                     {match.home_team_name} vs {match.away_team_name}
+                    {completenessBadge(match.completeness_status)}
                   </p>
                 </div>
                 <div className="text-right">

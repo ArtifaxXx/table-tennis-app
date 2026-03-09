@@ -43,6 +43,9 @@ const Seasons = () => {
   const [divisionSaving, setDivisionSaving] = useState(false);
   const [divisionDirty, setDivisionDirty] = useState(false);
   const [fixtureInfoSeasonId, setFixtureInfoSeasonId] = useState('');
+  const [fixturePreviewSeasonId, setFixturePreviewSeasonId] = useState('');
+  const [fixturePreviewLoading, setFixturePreviewLoading] = useState(false);
+  const [fixturePreview, setFixturePreview] = useState(null);
 
   useEffect(() => {
     if (didInitRef.current) return;
@@ -67,6 +70,30 @@ const Seasons = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openFixturePreview = async (seasonId) => {
+    if (!seasonId) return;
+    if (!isAdmin) return;
+    setFixturePreviewSeasonId(seasonId);
+    setFixturePreviewLoading(true);
+    setFixturePreview(null);
+    try {
+      const res = await axios.post('/api/fixtures/generate-schedule/preview', { team_season_id: seasonId });
+      setFixturePreview(res.data || null);
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.response?.data?.error || e.message);
+      setFixturePreviewSeasonId('');
+    } finally {
+      setFixturePreviewLoading(false);
+    }
+  };
+
+  const closeFixturePreview = () => {
+    setFixturePreviewSeasonId('');
+    setFixturePreviewLoading(false);
+    setFixturePreview(null);
   };
 
   const openDivisions = async (seasonId) => {
@@ -266,7 +293,6 @@ const Seasons = () => {
   const generateFixtures = async (seasonId) => {
     if (!seasonId) return;
     if (!isAdmin) return;
-    if (!window.confirm('Generate fixtures now? This will create the season schedule.')) return;
     setGenerating(true);
     try {
       await axios.post('/api/fixtures/generate-schedule', { team_season_id: seasonId });
@@ -376,7 +402,7 @@ const Seasons = () => {
                         Divisions
                       </button>
                       {isAdmin && s.status === 'draft' && (fixtureCounts[s.id] || 0) === 0 && (
-                        <button className="btn btn-warning" onClick={() => generateFixtures(s.id)} disabled={generating}>
+                        <button className="btn btn-warning" onClick={() => openFixturePreview(s.id)} disabled={generating}>
                           <span className="flex items-center gap-2">
                             <span>{generating ? 'Generating...' : 'Generate Fixtures'}</span>
                             <span
@@ -565,6 +591,105 @@ const Seasons = () => {
                 After fixtures are generated, the season moves from <span className="font-medium">draft</span> to <span className="font-medium">ready</span>.
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {fixturePreviewSeasonId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white shadow-lg border p-5">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="text-lg font-semibold text-gray-800">Fixture Generation Preview</div>
+                <div className="text-sm text-gray-600">Review what will be generated before confirming.</div>
+              </div>
+              <button className="btn btn-secondary" type="button" onClick={closeFixturePreview}>
+                Close
+              </button>
+            </div>
+
+            {fixturePreviewLoading ? (
+              <div className="text-gray-600">Loading preview...</div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-gray-50 border rounded p-3">
+                    <div className="text-xs text-gray-500">Start</div>
+                    <div className="font-medium text-gray-800">
+                      {fixturePreview?.schedule_start_date ? new Date(fixturePreview.schedule_start_date).toLocaleDateString() : '-'}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 border rounded p-3">
+                    <div className="text-xs text-gray-500">End</div>
+                    <div className="font-medium text-gray-800">
+                      {fixturePreview?.schedule_end_date ? new Date(fixturePreview.schedule_end_date).toLocaleDateString() : '-'}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 border rounded p-3">
+                    <div className="text-xs text-gray-500">Total fixtures</div>
+                    <div className="font-medium text-gray-800">{fixturePreview?.total_fixtures ?? '-'}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-gray-800 mb-2">Divisions</div>
+                  <div className="overflow-x-auto">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Division</th>
+                          <th>Teams</th>
+                          <th>Fixtures</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(fixturePreview?.divisions || []).map((d) => (
+                          <tr key={d.division_id}>
+                            <td className="font-medium">{d.division_name}</td>
+                            <td>{d.team_count}</td>
+                            <td>{d.fixture_count}</td>
+                          </tr>
+                        ))}
+                        {(!fixturePreview?.divisions || fixturePreview.divisions.length === 0) && (
+                          <tr>
+                            <td colSpan={3} className="text-gray-500">No divisions found.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {(fixturePreview?.warnings || []).length > 0 && (
+                  <div className="border rounded p-3 bg-yellow-50">
+                    <div className="text-sm font-medium text-yellow-900 mb-2">Warnings</div>
+                    <div className="space-y-1 text-sm text-yellow-900">
+                      {(fixturePreview.warnings || []).map((w, idx) => (
+                        <div key={idx}>- {w}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button className="btn btn-secondary" type="button" onClick={closeFixturePreview}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-warning"
+                    type="button"
+                    disabled={generating || !fixturePreview || (fixturePreview?.total_fixtures || 0) === 0}
+                    onClick={async () => {
+                      if (!window.confirm('Generate fixtures now? This will create the season schedule.')) return;
+                      await generateFixtures(fixturePreviewSeasonId);
+                      closeFixturePreview();
+                    }}
+                  >
+                    {generating ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -301,7 +301,7 @@ app.get('/api/teams/:id', async (req, res) => {
   }
 });
 
-app.put('/api/teams/:id', async (req, res) => {
+app.put('/api/teams/:id', requireAdmin, async (req, res) => {
   try {
     const team = await teamManager.updateTeam(req.params.id, req.body);
     res.json(team);
@@ -310,7 +310,7 @@ app.put('/api/teams/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/teams/:id', async (req, res) => {
+app.delete('/api/teams/:id', requireAdmin, async (req, res) => {
   try {
     await teamManager.deleteTeam(req.params.id);
     res.status(204).send();
@@ -319,7 +319,7 @@ app.delete('/api/teams/:id', async (req, res) => {
   }
 });
 
-app.put('/api/teams/:id/roster', async (req, res) => {
+app.put('/api/teams/:id/roster', requireAdmin, async (req, res) => {
   try {
     const roster = await teamManager.setTeamRoster(req.params.id, req.body);
     res.json(roster);
@@ -337,7 +337,7 @@ app.get('/api/team-seasons/:seasonId/divisions', async (req, res) => {
   }
 });
 
-app.post('/api/team-seasons/:seasonId/divisions', async (req, res) => {
+app.post('/api/team-seasons/:seasonId/divisions', requireAdmin, async (req, res) => {
   try {
     const division = await teamSeasonDivisionManager.createDivision(req.params.seasonId, req.body);
     res.status(201).json(division);
@@ -346,7 +346,7 @@ app.post('/api/team-seasons/:seasonId/divisions', async (req, res) => {
   }
 });
 
-app.put('/api/divisions/:divisionId', async (req, res) => {
+app.put('/api/divisions/:divisionId', requireAdmin, async (req, res) => {
   try {
     const division = await teamSeasonDivisionManager.updateDivision(req.params.divisionId, req.body);
     res.json(division);
@@ -373,7 +373,7 @@ app.get('/api/divisions/:divisionId/teams', async (req, res) => {
   }
 });
 
-app.put('/api/divisions/:divisionId/teams', async (req, res) => {
+app.put('/api/divisions/:divisionId/teams', requireAdmin, async (req, res) => {
   try {
     const teams = await teamSeasonDivisionManager.setDivisionTeams(req.params.divisionId, req.body.teamIds);
     res.json(teams);
@@ -414,7 +414,7 @@ app.get('/api/fixtures/counts-by-season', async (req, res) => {
   }
 });
 
-app.post('/api/fixtures', async (req, res) => {
+app.post('/api/fixtures', requireAdmin, async (req, res) => {
   try {
     const team_season_id = await resolveTeamSeasonId(req);
     if (!team_season_id) {
@@ -449,7 +449,7 @@ app.get('/api/fixtures/:id', async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id', async (req, res) => {
+app.put('/api/fixtures/:id', requireAdmin, async (req, res) => {
   try {
     const { match_date } = req.body;
     if (!match_date) {
@@ -462,7 +462,71 @@ app.put('/api/fixtures/:id', async (req, res) => {
   }
 });
 
-app.post('/api/fixtures/generate-schedule', async (req, res) => {
+app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, res) => {
+  try {
+    const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
+    if (!team_season_id) {
+      throw new Error('team_season_id is required');
+    }
+
+    const season = await teamSeasonManager.getSeasonById(team_season_id);
+    if (!season) {
+      throw new Error('Season not found');
+    }
+
+    const scheduleStartDate = (req.body && req.body.schedule_start_date) ? req.body.schedule_start_date : season.schedule_start_date;
+    const scheduleEndDate = (req.body && req.body.schedule_end_date) ? req.body.schedule_end_date : season.schedule_end_date;
+
+    const warnings = [];
+    if (!scheduleStartDate || !scheduleEndDate) {
+      warnings.push('Season schedule window is not set (start/end dates).');
+    }
+
+    const divisions = await teamSeasonDivisionManager.getDivisionsBySeason(team_season_id);
+    if (!divisions || divisions.length === 0) {
+      warnings.push('No divisions configured for this season.');
+    }
+
+    const perDivision = [];
+    let totalFixtures = 0;
+
+    for (const d of (divisions || [])) {
+      const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
+      const teamCount = Array.isArray(teamIds) ? teamIds.length : 0;
+
+      // Double round robin: each pair plays twice => n*(n-1)
+      const fixtureCount = teamCount >= 2 ? (teamCount * (teamCount - 1)) : 0;
+      if (teamCount < 2) {
+        warnings.push(`Division "${d.name}" has fewer than 2 teams and will be skipped.`);
+      }
+
+      totalFixtures += fixtureCount;
+      perDivision.push({
+        division_id: d.id,
+        division_name: d.name,
+        team_count: teamCount,
+        fixture_count: fixtureCount,
+      });
+    }
+
+    if (totalFixtures === 0) {
+      warnings.push('No fixtures would be generated. Ensure each division has at least 2 teams.');
+    }
+
+    res.json({
+      team_season_id,
+      schedule_start_date: scheduleStartDate || null,
+      schedule_end_date: scheduleEndDate || null,
+      divisions: perDivision,
+      total_fixtures: totalFixtures,
+      warnings,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/fixtures/generate-schedule', requireAdmin, async (req, res) => {
   try {
     const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
     if (!team_season_id) {
@@ -513,7 +577,7 @@ app.post('/api/fixtures/generate-schedule', async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id/lineups/:side', async (req, res) => {
+app.put('/api/fixtures/:id/lineups/:side', requireAdmin, async (req, res) => {
   try {
     await fixtureManager.setLineup(req.params.id, req.params.side, req.body.playerIds);
     const fixture = await fixtureManager.getFixtureById(req.params.id);
@@ -523,7 +587,7 @@ app.put('/api/fixtures/:id/lineups/:side', async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id/games/:gameNumber/sets', async (req, res) => {
+app.put('/api/fixtures/:id/games/:gameNumber/sets', requireAdmin, async (req, res) => {
   try {
     const fixture = await fixtureManager.setGameSets(req.params.id, parseInt(req.params.gameNumber, 10), req.body.sets);
     res.json(fixture);
@@ -601,7 +665,7 @@ app.get('/api/matches', async (req, res) => {
   }
 });
 
-app.post('/api/matches', async (req, res) => {
+app.post('/api/matches', requireAdmin, async (req, res) => {
   try {
     const match = await matchManager.createMatch(req.body);
     res.status(201).json(match);
@@ -622,7 +686,7 @@ app.get('/api/matches/:id', async (req, res) => {
   }
 });
 
-app.put('/api/matches/:id', async (req, res) => {
+app.put('/api/matches/:id', requireAdmin, async (req, res) => {
   try {
     const match = await matchManager.updateMatch(req.params.id, req.body);
     res.json(match);
@@ -649,7 +713,7 @@ app.get('/api/statistics', async (req, res) => {
   }
 });
 
-app.get('/api/schedule', async (req, res) => {
+app.get('/api/schedule', requireAdmin, async (req, res) => {
   try {
     const schedule = await leagueManager.generateSchedule();
     res.json(schedule);
