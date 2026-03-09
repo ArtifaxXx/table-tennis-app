@@ -4,6 +4,8 @@ import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const Seasons = () => {
   const { isAdmin } = useAuth();
@@ -255,15 +257,17 @@ const Seasons = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Seasons</h2>
-        <div className="text-sm text-gray-600">
-          Active: <span className="font-medium">{activeSeason?.name || 'None'}</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Seasons"
+        right={
+          <div className="text-sm text-gray-600">
+            Active: <span className="font-medium">{activeSeason?.name || 'None'}</span>
+          </div>
+        }
+      />
 
       {isAdmin && (
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Create Season</h3>
           <form onSubmit={createSeason} className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
@@ -289,10 +293,10 @@ const Seasons = () => {
             </select>
             <button className="btn btn-success" type="submit">Create</button>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div className="card">
+      <Card>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Manage Seasons</h3>
 
         <div className="overflow-x-auto">
@@ -362,10 +366,10 @@ const Seasons = () => {
           </table>
           {seasons.length === 0 && <div className="text-gray-500 text-center py-6">No seasons yet</div>}
         </div>
-      </div>
+      </Card>
 
       {managingSeasonId && (
-        <div className="card">
+        <Card>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-800">
               Divisions: <span className="font-medium">{managingSeason?.name || ''}</span>
@@ -447,7 +451,7 @@ const Seasons = () => {
               ? 'This season is active or concluded. Divisions and team composition are read-only.'
               : 'Each team should be in only one division per season.'}
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

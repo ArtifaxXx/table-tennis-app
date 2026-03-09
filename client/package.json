@@ -16,8 +16,8 @@
     "date-fns": "^2.30.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start": "node scripts/generate-build-info.js && react-scripts start",
+    "build": "node scripts/generate-build-info.js && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

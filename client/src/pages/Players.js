@@ -4,6 +4,8 @@ import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const Players = () => {
   const { isAdmin } = useAuth();
@@ -98,21 +100,23 @@ const Players = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Players</h2>
-        {isAdmin && (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus size={20} />
-            <span>Add Player</span>
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Players"
+        right={
+          isAdmin ? (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Plus size={20} />
+              <span>Add Player</span>
+            </button>
+          ) : null
+        }
+      />
 
       {isAdmin && showAddForm && (
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             {editingPlayer ? 'Edit Player' : 'Add New Player'}
           </h3>
@@ -140,10 +144,10 @@ const Players = () => {
               </button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div className="card">
+      <Card>
         <div className="flex items-center space-x-2 mb-4">
           <Search size={20} className="text-gray-400" />
           <input
@@ -223,7 +227,7 @@ const Players = () => {
             </div>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

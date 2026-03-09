@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const emptySet = () => ({ home_points: 0, away_points: 0 });
 
@@ -90,7 +92,7 @@ const FixtureDetail = () => {
     const rosterPlayers = roster.slice().sort((a, b) => a.slot - b.slot);
 
     return (
-      <div className="card">
+      <Card>
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold text-gray-800">{side === 'home' ? 'Home' : 'Away'} lineup</h3>
           {isAdmin && <button className="btn btn-success" onClick={() => saveLineup(side)}>Save</button>}
@@ -124,7 +126,7 @@ const FixtureDetail = () => {
         <div className="text-xs text-gray-500 mt-2">
           Day order is enforced automatically by roster slot (mains first, subs last).
         </div>
-      </div>
+      </Card>
     );
   };
 
@@ -135,30 +137,34 @@ const FixtureDetail = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Fixture</h2>
-          <div className="text-gray-600">
-            {fixture.home_team_name} vs {fixture.away_team_name}
+      <PageHeader
+        title="Fixture"
+        subtitle={
+          <>
+            <div className="text-gray-600">
+              {fixture.home_team_name} vs {fixture.away_team_name}
+            </div>
+            <div className="text-sm text-gray-500">
+              {fixture.match_date ? new Date(fixture.match_date).toLocaleString() : 'No date'}
+            </div>
+          </>
+        }
+        right={
+          <div className="flex items-center gap-3">
+            <div className="font-medium">
+              {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
+            </div>
+            <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
-          <div className="text-sm text-gray-500">
-            {fixture.match_date ? new Date(fixture.match_date).toLocaleString() : 'No date'}
-          </div>
-        </div>
-        <div className="text-right">
-          <Link className="btn btn-secondary" to="/fixtures">Back</Link>
-          <div className="mt-2 font-medium">
-            {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {renderLineupSelect('home', homeRoster, homeSelection, setHomeSelection)}
         {renderLineupSelect('away', awayRoster, awaySelection, setAwaySelection)}
       </div>
 
-      <div className="card">
+      <Card>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">9 games (best of 5)</h3>
         {games.length === 0 && (
           <div className="text-gray-500">
@@ -175,7 +181,7 @@ const FixtureDetail = () => {
             />
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

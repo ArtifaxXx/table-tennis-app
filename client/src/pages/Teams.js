@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const Teams = () => {
   const { isAdmin } = useAuth();
@@ -167,10 +169,11 @@ const Teams = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800">Teams</h2>
+      <PageHeader title="Teams" />
 
       {isAdmin && (
-        <form onSubmit={onCreateTeam} className="card space-y-4">
+        <Card>
+          <form onSubmit={onCreateTeam} className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800">Create Team</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
@@ -193,11 +196,12 @@ const Teams = () => {
             />
           </div>
           <button className="btn btn-success" type="submit">Create</button>
-        </form>
+          </form>
+        </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">All Teams</h3>
           <div className="space-y-2">
             {teams.map((t) => (
@@ -227,9 +231,9 @@ const Teams = () => {
             ))}
             {teams.length === 0 && <div className="text-gray-500">No teams yet</div>}
           </div>
-        </div>
+        </Card>
 
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Roster</h3>
           {!selectedTeam && <div className="text-gray-500">Select a team to edit roster.</div>}
           {selectedTeam && (
@@ -338,7 +342,7 @@ const Teams = () => {
               )}
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

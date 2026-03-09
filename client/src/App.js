@@ -13,6 +13,7 @@ import { DivisionProvider } from './context/DivisionContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import ToastViewport from './components/ToastViewport';
+import BuildInfoWidget from './components/BuildInfoWidget';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
               </Routes>
             </main>
             <ToastViewport />
+            <BuildInfoWidget />
           </div>
         </DivisionProvider>
       </AuthProvider>

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const PlayerRankings = () => {
   const [rows, setRows] = useState([]);
@@ -40,27 +42,32 @@ const PlayerRankings = () => {
 
   if (loading) return <div className="text-center py-8">Loading player rankings...</div>;
 
+  const selectedSeasonName = seasons.find((s) => s.id === selectedSeasonId)?.name || 'Season';
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Player Rankings (Singles)</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Season</span>
-          <select className="input" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
-            {seasons.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}{s.status === 'active' ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PageHeader
+        title="Player Rankings (Singles)"
+        subtitle={
+          <>
+            Viewing: <span className="font-medium">{selectedSeasonName}</span>
+          </>
+        }
+        right={
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Season</span>
+            <select className="input" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
+              {seasons.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.status === 'active' ? ' (active)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      />
 
-      <div className="text-sm text-gray-500">
-        Viewing: <span className="font-medium">{seasons.find((s) => s.id === selectedSeasonId)?.name || 'Season'}</span>
-      </div>
-
-      <div className="card">
+      <Card>
         <div className="overflow-x-auto">
           <table className="table">
             <thead>
@@ -90,7 +97,7 @@ const PlayerRankings = () => {
           </table>
           {rows.length === 0 && <div className="text-gray-500 text-center py-8">No data yet</div>}
         </div>
-      </div>
+      </Card>
 
       <div className="text-sm text-gray-500">
         Ranking is based on singles games won. Ties share the same rank.

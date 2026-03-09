@@ -3,6 +3,8 @@ import { Users, Calendar, Trophy, TrendingUp } from 'lucide-react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { useDivisionContext } from '../context/DivisionContext';
+import Card from '../components/Card';
+import PageHeader from '../components/PageHeader';
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
@@ -83,16 +85,16 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">League Dashboard</h2>
-        {seasonLabel && <div className="text-sm text-gray-600 mt-1">{seasonLabel}</div>}
-      </div>
+      <PageHeader
+        title="League Dashboard"
+        subtitle={seasonLabel ? seasonLabel : null}
+      />
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card, index) => {
           const Icon = card.icon;
           return (
-            <div key={index} className="card">
+            <Card key={index}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{card.title}</p>
@@ -102,13 +104,13 @@ const Dashboard = () => {
                   <Icon className="text-white" size={24} />
                 </div>
               </div>
-            </div>
+            </Card>
           );
         })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Fixtures</h3>
           <div className="space-y-3">
             {stats.recentFixtures?.map((match, index) => (
@@ -132,9 +134,9 @@ const Dashboard = () => {
               <p className="text-gray-500 text-center py-4">No completed fixtures yet</p>
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className="card">
+        <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Top Teams</h3>
           <div className="space-y-3">
             {stats.topTeams?.map((team, index) => (
@@ -155,10 +157,10 @@ const Dashboard = () => {
               <p className="text-gray-500 text-center py-4">No standings yet</p>
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
-      <div className="card">
+      <Card>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-gray-800">Player Rankings (Singles)</h3>
           <Link className="text-sm text-blue-600 hover:text-blue-800" to="/player-rankings">
@@ -181,7 +183,7 @@ const Dashboard = () => {
             <div className="text-gray-500 text-center py-4">No singles results yet</div>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

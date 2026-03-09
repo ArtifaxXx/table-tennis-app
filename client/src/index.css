@@ -18,7 +18,7 @@ code {
 }
 
 .card {
-  @apply bg-white rounded-lg shadow-md p-6;
+  @apply bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6;
 }
 
 .btn {
@@ -55,10 +55,21 @@ code {
 
 .table th {
   @apply bg-gray-50 px-3 py-2 md:px-6 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .table td {
   @apply px-3 py-2 md:px-6 md:py-4 whitespace-normal md:whitespace-nowrap text-sm text-gray-900 border-b;
+}
+
+.table tbody tr:nth-child(odd) {
+  background-color: #f9fafb;
+}
+
+.table tbody tr:hover {
+  background-color: #f3f4f6;
 }
 
 .nav-link {
