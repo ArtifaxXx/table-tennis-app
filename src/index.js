@@ -141,7 +141,15 @@ app.post('/api/admin/seed', requireAdmin, requireSeedToken, async (req, res) => 
 
   isSeeding = true;
   try {
-    await seedDatabase(db);
+    console.log('Admin seed started');
+    const seedDb = new Database();
+    await seedDb.initialize();
+    try {
+      await seedDatabase(seedDb);
+    } finally {
+      await seedDb.close();
+    }
+    console.log('Admin seed completed');
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

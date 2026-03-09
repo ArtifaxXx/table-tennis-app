@@ -5,21 +5,9 @@ const FixtureManager = require('./models/fixture');
 const { v4: uuidv4 } = require('uuid');
 
 async function seedDatabase(db) {
-  // Clean existing data (team league + legacy individual matches)
-  // Order matters due to foreign keys.
-  await db.run('DELETE FROM fixture_game_sets');
-  await db.run('DELETE FROM fixture_games');
-  await db.run('DELETE FROM fixture_lineups');
-  await db.run('DELETE FROM fixtures');
-  await db.run('DELETE FROM team_season_division_teams');
-  await db.run('DELETE FROM team_season_divisions');
-  await db.run('DELETE FROM team_roster');
-  await db.run('DELETE FROM teams');
-  await db.run('DELETE FROM team_seasons');
-  await db.run('DELETE FROM matches');
-  await db.run('DELETE FROM season_participants');
-  await db.run('DELETE FROM seasons');
-  await db.run('DELETE FROM players');
+  await db.run('PRAGMA synchronous = OFF');
+  await db.run('PRAGMA temp_store = MEMORY');
+  await db.run('PRAGMA cache_size = -20000');
 
   const teamManager = new TeamManager(db);
   const teamSeasonManager = new TeamSeasonManager(db);
@@ -291,6 +279,22 @@ async function seedDatabase(db) {
 
   const createdTeamsByDivisionName = new Map();
 
+  // Clean existing data (team league + legacy individual matches)
+  // Order matters due to foreign keys.
+  await db.run('DELETE FROM fixture_game_sets');
+  await db.run('DELETE FROM fixture_games');
+  await db.run('DELETE FROM fixture_lineups');
+  await db.run('DELETE FROM fixtures');
+  await db.run('DELETE FROM team_season_division_teams');
+  await db.run('DELETE FROM team_season_divisions');
+  await db.run('DELETE FROM team_roster');
+  await db.run('DELETE FROM teams');
+  await db.run('DELETE FROM team_seasons');
+  await db.run('DELETE FROM matches');
+  await db.run('DELETE FROM season_participants');
+  await db.run('DELETE FROM seasons');
+  await db.run('DELETE FROM players');
+
   for (const t of teams) {
     const team = await teamManager.createTeam({
       name: t.name,
@@ -458,6 +462,11 @@ async function seedDatabase(db) {
   divisionCounts.forEach((r) => console.log(`- ${r.season_name} / ${r.division_name}: ${r.fixture_count}`));
   console.log('Team list:');
   allTeams.forEach((t) => console.log(`- ${t.name}`));
+
+  try {
+    await db.run('PRAGMA synchronous = NORMAL');
+  } catch (ignore) {
+  }
 }
 
 async function seed() {
