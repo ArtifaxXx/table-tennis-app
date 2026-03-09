@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { Users, Calendar, Trophy } from 'lucide-react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import { useDivisionContext } from '../context/DivisionContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 
@@ -9,13 +10,14 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const inFlightRef = useRef(false);
+  const { selectedDivisionId } = useDivisionContext();
 
   const fetchStats = useCallback(async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
       const response = await axios.get('/api/dashboard', {
-        params: {},
+        params: selectedDivisionId ? { divisionId: selectedDivisionId } : {},
       });
       setStats(response.data);
     } catch (error) {
@@ -24,7 +26,7 @@ const Dashboard = () => {
       setLoading(false);
       inFlightRef.current = false;
     }
-  }, []);
+  }, [selectedDivisionId]);
 
   useEffect(() => {
     fetchStats();
