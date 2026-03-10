@@ -138,6 +138,26 @@ async function seedDatabase(db) {
     const A2 = awayMain[1];
     const A3 = awayMain[2];
 
+    await db.run('DELETE FROM fixture_lineups WHERE fixture_id = ?', [fixtureId]);
+    await db.run(
+      `INSERT INTO fixture_lineups (id, fixture_id, side, day_rank, player_id, is_sub)
+       VALUES
+         (?, ?, 'home', 1, ?, 0),
+         (?, ?, 'home', 2, ?, 0),
+         (?, ?, 'home', 3, ?, 0),
+         (?, ?, 'away', 1, ?, 0),
+         (?, ?, 'away', 2, ?, 0),
+         (?, ?, 'away', 3, ?, 0)`,
+      [
+        uuidv4(), fixtureId, H1,
+        uuidv4(), fixtureId, H2,
+        uuidv4(), fixtureId, H3,
+        uuidv4(), fixtureId, A1,
+        uuidv4(), fixtureId, A2,
+        uuidv4(), fixtureId, A3,
+      ]
+    );
+
     const hBase = hashInt(`${fixtureId}:match`);
     const matchWinner = (hBase % 2 === 0) ? 'home' : 'away';
     const marginOptions = [0, 1, 2, 3, 4];

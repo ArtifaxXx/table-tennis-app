@@ -90,8 +90,30 @@ const FixtureDetail = () => {
     }
   };
 
+  const designationByPlayerId = useMemo(() => {
+    const m = new Map();
+    for (let i = 0; i < homeSelection.length; i++) {
+      const pid = homeSelection[i];
+      if (pid) m.set(pid, `H${i + 1}`);
+    }
+    for (let i = 0; i < awaySelection.length; i++) {
+      const pid = awaySelection[i];
+      if (pid) m.set(pid, `A${i + 1}`);
+    }
+    return m;
+  }, [homeSelection, awaySelection]);
+
+  const formatPlayerWithDesignation = useCallback(
+    (playerId, playerName) => {
+      const d = designationByPlayerId.get(playerId);
+      return d ? `${d} ${playerName}` : playerName;
+    },
+    [designationByPlayerId]
+  );
+
   const renderLineupSelect = (side, roster, selection, setSelection) => {
     const rosterPlayers = roster.slice().sort((a, b) => a.slot - b.slot);
+    const prefix = side === 'home' ? 'H' : 'A';
 
     return (
       <Card>
@@ -103,7 +125,7 @@ const FixtureDetail = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[0, 1, 2].map((idx) => (
             <div key={idx}>
-              <label className="block text-sm text-gray-600 mb-1">Playing (pick 3)</label>
+              <label className="block text-sm text-gray-600 mb-1">{prefix}{idx + 1}</label>
               <select
                 className="input"
                 value={selection[idx]}
@@ -180,6 +202,7 @@ const FixtureDetail = () => {
               key={g.id}
               game={g}
               canEdit={canEdit}
+              formatPlayerWithDesignation={formatPlayerWithDesignation}
               onSave={(sets) => updateGameSets(g.game_number, sets)}
             />
           ))}
@@ -189,7 +212,7 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, canEdit, onSave }) => {
+const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
   const [sets, setSets] = useState(() => {
     if (Array.isArray(game.sets) && game.sets.length > 0) {
       return game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }));
@@ -205,9 +228,9 @@ const GameCard = ({ game, canEdit, onSave }) => {
 
   const title = () => {
     if (game.game_type === 'singles') {
-      return `${game.home_player_a_name} vs ${game.away_player_a_name}`;
+      return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)}`;
     }
-    return `${game.home_player_a_name} / ${game.home_player_b_name} vs ${game.away_player_a_name} / ${game.away_player_b_name}`;
+    return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} / ${formatPlayerWithDesignation(game.home_player_b_id, game.home_player_b_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)} / ${formatPlayerWithDesignation(game.away_player_b_id, game.away_player_b_name)}`;
   };
 
   const addSet = () => {

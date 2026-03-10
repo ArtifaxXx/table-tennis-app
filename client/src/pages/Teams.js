@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -138,13 +138,7 @@ const Teams = () => {
     [players]
   );
 
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [t, p] = await Promise.all([
         axios.get('/api/teams'),
@@ -157,7 +151,17 @@ const Teams = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    fetchData();
+
+    const onFocus = () => fetchData();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchData]);
 
   const onSaveContact = async () => {
     if (!isAdmin) return;
