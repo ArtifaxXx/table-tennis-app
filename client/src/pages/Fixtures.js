@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
+import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
 const Fixtures = () => {
   const toast = useToast();
@@ -89,9 +90,23 @@ const Fixtures = () => {
       missing_sets: 'Sets',
     };
     if (!c) return null;
-    return (
+
+    const tooltipText = c === 'violation' ? VIOLATION_TOOLTIP_TEXT : null;
+
+    const badge = (
       <span className={`px-2 py-1 text-xs rounded-full border ${styles[c] || styles.missing_lineups}`}>
         {labels[c] || c}
+      </span>
+    );
+
+    if (!tooltipText) return badge;
+
+    return (
+      <span className="relative inline-block group">
+        {badge}
+        <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-72 -translate-x-1/2 whitespace-normal break-words rounded-md bg-gray-700 px-2 py-1 text-left text-xs leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+          {tooltipText}
+        </span>
       </span>
     );
   };

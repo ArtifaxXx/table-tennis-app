@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
+import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
 const emptySet = () => ({ home_points: 0, away_points: 0 });
 
@@ -76,11 +77,13 @@ const FixtureDetail = () => {
     };
   }, [refresh, toast]);
 
-  const saveLineup = async (side) => {
+  const saveBothLineups = async () => {
     if (!canEdit) return;
-    const playerIds = side === 'home' ? homeSelection : awaySelection;
     try {
-      await axios.put(`/api/fixtures/${id}/lineups/${side}`, { playerIds });
+      await Promise.all([
+        axios.put(`/api/fixtures/${id}/lineups/home`, { playerIds: homeSelection }),
+        axios.put(`/api/fixtures/${id}/lineups/away`, { playerIds: awaySelection }),
+      ]);
       await refresh();
       toast.success('Save successful');
     } catch (e) {
@@ -113,72 +116,99 @@ const FixtureDetail = () => {
     }));
   }, []);
 
-  const designationByPlayerId = useMemo(() => {
+  const playerNameById = useMemo(() => {
     const m = new Map();
-
-    const savedHome = (fixture?.lineups || [])
-      .filter((l) => l.side === 'home')
-      .slice()
-      .sort((a, b) => a.day_rank - b.day_rank);
-    const savedAway = (fixture?.lineups || [])
-      .filter((l) => l.side === 'away')
-      .slice()
-      .sort((a, b) => a.day_rank - b.day_rank);
-
-    const homeIds = savedHome.length === 3 ? savedHome.map((l) => l.player_id) : homeSelection;
-    const awayIds = savedAway.length === 3 ? savedAway.map((l) => l.player_id) : awaySelection;
-
-    for (let i = 0; i < homeIds.length; i++) {
-      const pid = homeIds[i];
-      if (pid) m.set(pid, `H${i + 1}`);
+    for (const p of homeRoster) {
+      if (p?.player_id) m.set(p.player_id, p.player_name);
     }
-    for (let i = 0; i < awayIds.length; i++) {
-      const pid = awayIds[i];
-      if (pid) m.set(pid, `A${i + 1}`);
+    for (const p of awayRoster) {
+      if (p?.player_id) m.set(p.player_id, p.player_name);
     }
     return m;
-  }, [fixture?.lineups, homeSelection, awaySelection]);
+  }, [homeRoster, awayRoster]);
 
-  const formatPlayerWithDesignation = useCallback(
-    (playerId, playerName) => {
-      const d = designationByPlayerId.get(playerId);
-      return d ? `${d} ${playerName}` : playerName;
+  const slotIds = useMemo(() => {
+    return {
+      H1: homeSelection[0] || '',
+      H2: homeSelection[1] || '',
+      H3: homeSelection[2] || '',
+      A1: awaySelection[0] || '',
+      A2: awaySelection[1] || '',
+      A3: awaySelection[2] || '',
+    };
+  }, [homeSelection, awaySelection]);
+
+  const slotName = useCallback(
+    (slot) => {
+      const pid = slotIds[slot];
+      if (!pid) return '';
+      return playerNameById.get(pid) || '';
     },
-    [designationByPlayerId]
+    [playerNameById, slotIds]
+  );
+
+  const violationIndicesForSide = useCallback(
+    (side, roster, selection) => {
+      const slotByPlayerId = new Map((roster || []).map((r) => [r.player_id, Number(r.slot)]));
+      const slots = (selection || []).map((pid) => slotByPlayerId.get(pid));
+      const bad = new Set();
+
+      for (let i = 0; i < slots.length; i++) {
+        for (let j = i + 1; j < slots.length; j++) {
+          const a = slots[i];
+          const b = slots[j];
+          if (a == null || b == null) continue;
+          if (a > b) {
+            bad.add(i);
+            bad.add(j);
+          }
+        }
+      }
+
+      return { side, bad };
+    },
+    []
   );
 
   const renderLineupSelect = (side, roster, selection, setSelection) => {
     const rosterPlayers = roster.slice().sort((a, b) => a.slot - b.slot);
     const prefix = side === 'home' ? 'H' : 'A';
+    const { bad } = violationIndicesForSide(side, roster, selection);
 
     return (
       <Card>
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold text-gray-800">{side === 'home' ? 'Home' : 'Away'} lineup</h3>
-          {canEdit && <button className="btn btn-success" onClick={() => saveLineup(side)}>Save</button>}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[0, 1, 2].map((idx) => (
             <div key={idx}>
               <label className="block text-sm text-gray-600 mb-1">{prefix}{idx + 1}</label>
-              <select
-                className="input"
-                value={selection[idx]}
-                onChange={(e) => {
-                  const next = [...selection];
-                  next[idx] = e.target.value;
-                  setSelection(next);
-                }}
-                disabled={!canEdit}
-              >
-                <option value="">Select player</option>
-                {rosterPlayers.map((p) => (
-                  <option key={p.player_id} value={p.player_id}>
-                    {p.player_name} (slot {p.slot})
-                  </option>
-                ))}
-              </select>
+              <div className="relative group">
+                <select
+                  className={`input ${bad.has(idx) ? 'border-red-300 bg-red-50' : ''}`}
+                  value={selection[idx]}
+                  onChange={(e) => {
+                    const next = [...selection];
+                    next[idx] = e.target.value;
+                    setSelection(next);
+                  }}
+                  disabled={!canEdit}
+                >
+                  <option value="">Select player</option>
+                  {rosterPlayers.map((p) => (
+                    <option key={p.player_id} value={p.player_id}>
+                      {p.player_name} (slot {p.slot})
+                    </option>
+                  ))}
+                </select>
+                {bad.has(idx) && (
+                  <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-72 -translate-x-1/2 whitespace-normal break-words rounded-md bg-gray-700 px-2 py-1 text-left text-xs leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                    {VIOLATION_TOOLTIP_TEXT}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -211,14 +241,11 @@ const FixtureDetail = () => {
         }
         right={
           <div className="flex items-center gap-3">
-            <div className="font-medium">
-              {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
+            <div className="font-medium whitespace-nowrap">
+              Score: {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
             </div>
-            {canEdit && (
-              <button className="btn btn-success" onClick={saveAllGameSets}>
-                Save Fixture
-              </button>
-            )}
+            {canEdit && <button className="btn btn-success" onClick={saveBothLineups}>Save Lineups</button>}
+            {canEdit && <button className="btn btn-success" onClick={saveAllGameSets}>Save Fixture</button>}
             <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
         }
@@ -243,7 +270,7 @@ const FixtureDetail = () => {
               key={g.id}
               game={g}
               canEdit={canEdit}
-              formatPlayerWithDesignation={formatPlayerWithDesignation}
+              slotName={slotName}
               sets={editedSetsByGameNumber[g.game_number] || [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()]}
               onChangeSets={(nextSets) => onChangeGameSets(g.game_number, nextSets)}
             />
@@ -254,12 +281,34 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, canEdit, sets, onChangeSets, formatPlayerWithDesignation }) => {
+const GameCard = ({ game, canEdit, sets, onChangeSets, slotName }) => {
+  const slotSpec = useMemo(() => {
+    const n = Number(game.game_number);
+    const map = {
+      1: { home: ['H1'], away: ['A2'] },
+      2: { home: ['H2'], away: ['A3'] },
+      3: { home: ['H3'], away: ['A1'] },
+      4: { home: ['H1', 'H2'], away: ['A1', 'A2'] },
+      5: { home: ['H1', 'H3'], away: ['A1', 'A3'] },
+      6: { home: ['H2', 'H3'], away: ['A2', 'A3'] },
+      7: { home: ['H1'], away: ['A1'] },
+      8: { home: ['H2'], away: ['A2'] },
+      9: { home: ['H3'], away: ['A3'] },
+    };
+    return map[n] || { home: [], away: [] };
+  }, [game.game_number]);
+
   const title = () => {
-    if (game.game_type === 'singles') {
-      return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)}`;
-    }
-    return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} / ${formatPlayerWithDesignation(game.home_player_b_id, game.home_player_b_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)} / ${formatPlayerWithDesignation(game.away_player_b_id, game.away_player_b_name)}`;
+    const homeLabel = slotSpec.home.join(' / ');
+    const awayLabel = slotSpec.away.join(' / ');
+
+    const homeNames = slotSpec.home.map((s) => slotName(s)).filter(Boolean).join(' / ');
+    const awayNames = slotSpec.away.map((s) => slotName(s)).filter(Boolean).join(' / ');
+
+    const left = homeNames ? `${homeLabel} ${homeNames}` : homeLabel;
+    const right = awayNames ? `${awayLabel} ${awayNames}` : awayLabel;
+
+    return `${left} vs ${right}`;
   };
 
   const decision = useMemo(() => {
