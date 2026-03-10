@@ -214,15 +214,18 @@ const FixtureDetail = () => {
 
 const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
   const [sets, setSets] = useState(() => {
-    if (Array.isArray(game.sets) && game.sets.length > 0) {
-      return game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }));
-    }
-    return [emptySet(), emptySet(), emptySet()];
+    const base = Array.isArray(game.sets) && game.sets.length > 0
+      ? game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
+      : [];
+    while (base.length < 5) base.push(emptySet());
+    return base.slice(0, 5);
   });
 
   useEffect(() => {
     if (Array.isArray(game.sets) && game.sets.length > 0) {
-      setSets(game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points })));
+      const next = game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }));
+      while (next.length < 5) next.push(emptySet());
+      setSets(next.slice(0, 5));
     }
   }, [game.id, game.sets]);
 
@@ -233,16 +236,31 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
     return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} / ${formatPlayerWithDesignation(game.home_player_b_id, game.home_player_b_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)} / ${formatPlayerWithDesignation(game.away_player_b_id, game.away_player_b_name)}`;
   };
 
-  const addSet = () => {
-    if (!canEdit) return;
-    if (sets.length >= 5) return;
-    setSets([...sets, emptySet()]);
-  };
+  const decision = useMemo(() => {
+    let homeWins = 0;
+    let awayWins = 0;
+    let decidedAfterIndex = null;
 
-  const removeSet = () => {
-    if (!canEdit) return;
-    if (sets.length <= 3) return;
-    setSets(sets.slice(0, sets.length - 1));
+    for (let i = 0; i < sets.length; i++) {
+      const s = sets[i];
+      const h = Number(s?.home_points) || 0;
+      const a = Number(s?.away_points) || 0;
+      if (h === 0 && a === 0) continue;
+      if (h === a) continue;
+      if (h > a) homeWins++;
+      if (a > h) awayWins++;
+      if (homeWins === 3 || awayWins === 3) {
+        decidedAfterIndex = i;
+        break;
+      }
+    }
+
+    return { homeWins, awayWins, decidedAfterIndex };
+  }, [sets]);
+
+  const isSetLocked = (idx) => {
+    if (decision.decidedAfterIndex == null) return false;
+    return idx > decision.decidedAfterIndex;
   };
 
   const setSideClasses = (homePoints, awayPoints) => {
@@ -277,7 +295,7 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
         {sets.map((s, idx) => (
-          <div key={idx} className="bg-gray-50 rounded p-2">
+          <div key={idx} className={`rounded p-2 ${isSetLocked(idx) ? 'bg-gray-100 opacity-60' : 'bg-gray-50'}`}>
             <div className="text-xs text-gray-500 mb-1">Set {idx + 1}</div>
             <div className="grid grid-rows-2 gap-2">
               <input
@@ -285,7 +303,7 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
                 type="number"
                 min="0"
                 value={s.home_points}
-                disabled={!canEdit}
+                disabled={!canEdit || isSetLocked(idx)}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], home_points: parseInt(e.target.value || '0', 10) };
@@ -297,7 +315,7 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
                 type="number"
                 min="0"
                 value={s.away_points}
-                disabled={!canEdit}
+                disabled={!canEdit || isSetLocked(idx)}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], away_points: parseInt(e.target.value || '0', 10) };
@@ -308,13 +326,6 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
           </div>
         ))}
       </div>
-
-      {canEdit && (
-        <div className="mt-3 flex gap-2">
-          <button className="btn btn-secondary" onClick={addSet} disabled={sets.length >= 5}>+ Set</button>
-          <button className="btn btn-secondary" onClick={removeSet} disabled={sets.length <= 3}>- Set</button>
-        </div>
-      )}
     </div>
   );
 };
