@@ -150,6 +150,7 @@ const Fixtures = () => {
             <thead>
               <tr>
                 <th className="cursor-pointer" onClick={() => requestSort('match_date')}>Date{sortIndicator(sortConfig, 'match_date')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('match_type')}>Type{sortIndicator(sortConfig, 'match_type')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('home_team_name')}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('away_team_name')}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
@@ -169,6 +170,9 @@ const Fixtures = () => {
                       onChange={(e) => updateFixtureDate(f.id, e.target.value)}
                       disabled={!canEdit}
                     />
+                  </td>
+                  <td className="text-sm text-gray-700">
+                    {(f.match_type || 'league') === 'cup' ? 'Cup' : 'League'}
                   </td>
                   <td className="font-medium">{f.home_team_name}</td>
                   <td className="font-medium">{f.away_team_name}</td>

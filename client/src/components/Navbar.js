@@ -145,6 +145,7 @@ const Navbar = () => {
     { path: '/teams', label: 'Teams', icon: Users },
     { path: '/fixtures', label: 'Season Fixtures', icon: Calendar },
     { path: '/team-standings', label: 'Standings', icon: Trophy },
+    { path: '/cup', label: 'Cup', icon: Trophy },
     { path: '/player-rankings', label: 'Player Rankings', icon: BarChart3 },
     { path: '/seasons', label: 'Seasons', icon: Calendar },
   ];

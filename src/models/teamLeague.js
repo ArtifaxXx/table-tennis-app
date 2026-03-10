@@ -138,7 +138,7 @@ class TeamLeagueManager {
       return [];
     }
 
-    const where = ['f.status = \'completed\''];
+    const where = ["f.status = 'completed'", "(f.match_type IS NULL OR f.match_type = 'league')"];
     const params = [];
     if (teamSeasonId) {
       where.push('f.team_season_id = ?');
@@ -323,6 +323,7 @@ class TeamLeagueManager {
       where.push('f.division_id = ?');
       baseParams.push(divisionId);
     }
+    where.push("(f.match_type IS NULL OR f.match_type = 'league')");
     const filterSql = where.length > 0 ? `AND ${where.join(' AND ')}` : '';
     const params = [
       ...baseParams, // w

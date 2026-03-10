@@ -10,6 +10,23 @@ import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 const emptySet = () => ({ home_points: 0, away_points: 0 });
 const emptySets5 = () => [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()];
 
+const winnerSideFromSets = (sets) => {
+  if (!Array.isArray(sets)) return null;
+  let homeWins = 0;
+  let awayWins = 0;
+  for (const s of sets) {
+    const h = Number(s?.home_points) || 0;
+    const a = Number(s?.away_points) || 0;
+    if (h === 0 && a === 0) continue;
+    if (h === a) continue;
+    if (h > a) homeWins++;
+    if (a > h) awayWins++;
+    if (homeWins === 3) return 'home';
+    if (awayWins === 3) return 'away';
+  }
+  return null;
+};
+
 const FixtureDetail = () => {
   const { isAdmin } = useAuth();
   const toast = useToast();
@@ -246,6 +263,50 @@ const FixtureDetail = () => {
     return out;
   }, [gamesByNumber]);
 
+  const cupStopGameIndex = useMemo(() => {
+    if ((fixture?.match_type || 'league') !== 'cup') return null;
+
+    const byNum = new Map((fixture?.games || []).map((g) => [Number(g.game_number), g]));
+    let homeWins = 0;
+    let awayWins = 0;
+    let stop = null;
+
+    for (let n = 1; n <= 9; n++) {
+      const g = byNum.get(n);
+      const backendWinner = g?.winner_side;
+      const localWinner = winnerSideFromSets(editedSetsByGameNumber?.[n]);
+      const winner = backendWinner === 'home' || backendWinner === 'away' ? backendWinner : localWinner;
+
+      if (winner === 'home') homeWins++;
+      if (winner === 'away') awayWins++;
+
+      if (homeWins >= 5 || awayWins >= 5) {
+        stop = n - 1;
+        break;
+      }
+    }
+
+    return stop;
+  }, [fixture, editedSetsByGameNumber]);
+
+  const cupFirstUndecidedGameIndex = useMemo(() => {
+    if ((fixture?.match_type || 'league') !== 'cup') return null;
+    const byNum = new Map((fixture?.games || []).map((g) => [Number(g.game_number), g]));
+
+    const isDecided = (n) => {
+      const g = byNum.get(n);
+      if (g?.winner_side === 'home' || g?.winner_side === 'away') return true;
+      const localSets = editedSetsByGameNumber?.[n];
+      const localWinner = winnerSideFromSets(localSets);
+      return localWinner === 'home' || localWinner === 'away';
+    };
+
+    for (let n = 1; n <= 9; n++) {
+      if (!isDecided(n)) return n - 1;
+    }
+    return 8;
+  }, [fixture, editedSetsByGameNumber]);
+
   if (loading) return <div className="text-center py-8">Loading fixture...</div>;
   if (!fixture) return <div className="text-center py-8">Fixture not found</div>;
 
@@ -301,6 +362,9 @@ const FixtureDetail = () => {
               slotName={slotName}
               sets={editedSetsByGameNumber[g.game_number] || emptySets5()}
               onChangeSets={(nextSets) => onChangeGameSets(g.game_number, nextSets)}
+              matchType={fixture.match_type || 'league'}
+              cupStopGameIndex={cupStopGameIndex}
+              cupFirstUndecidedGameIndex={cupFirstUndecidedGameIndex}
             />
           ))}
         </div>
@@ -309,7 +373,13 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, canEdit, sets, onChangeSets, slotName }) => {
+const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupStopGameIndex, cupFirstUndecidedGameIndex }) => {
+  const isGameLocked = () => {
+    if (matchType !== 'cup') return false;
+    if (cupFirstUndecidedGameIndex != null && (game.game_number - 1) > cupFirstUndecidedGameIndex) return true;
+    if (cupStopGameIndex == null) return false;
+    return (game.game_number - 1) > cupStopGameIndex;
+  };
   const slotSpec = useMemo(() => {
     const n = Number(game.game_number);
     const map = {
@@ -383,7 +453,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName }) => {
   };
 
   return (
-    <div className="border rounded-lg p-4">
+    <div className={`border rounded-lg p-4 ${isGameLocked() ? 'bg-gray-50 opacity-60' : ''}`}>
       <div className="flex justify-between items-start">
         <div>
           <div className="text-sm text-gray-500">Game {game.game_number} ({game.game_type})</div>
@@ -405,7 +475,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName }) => {
                 type="number"
                 min="0"
                 value={s.home_points}
-                disabled={!canEdit || isSetLocked(idx)}
+                disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], home_points: parseInt(e.target.value || '0', 10) };
@@ -417,7 +487,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName }) => {
                 type="number"
                 min="0"
                 value={s.away_points}
-                disabled={!canEdit || isSetLocked(idx)}
+                disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], away_points: parseInt(e.target.value || '0', 10) };

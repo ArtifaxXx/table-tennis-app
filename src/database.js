@@ -33,6 +33,16 @@ class Database {
     }
   }
 
+  async ensureDivisionCupMatchesDateColumn() {
+    const columns = await this.all('PRAGMA table_info(division_cup_matches)');
+    if (!columns || columns.length === 0) return;
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('match_date')) {
+      await this.run('ALTER TABLE division_cup_matches ADD COLUMN match_date DATETIME');
+    }
+  }
+
   async ensureFixturesSeasonColumn() {
     const columns = await this.all('PRAGMA table_info(fixtures)');
     const columnNames = new Set(columns.map((c) => c.name));
@@ -48,6 +58,16 @@ class Database {
 
     if (!columnNames.has('division_id')) {
       await this.run('ALTER TABLE fixtures ADD COLUMN division_id TEXT');
+    }
+  }
+
+  async ensureFixturesMatchTypeColumn() {
+    const columns = await this.all('PRAGMA table_info(fixtures)');
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('match_type')) {
+      await this.run("ALTER TABLE fixtures ADD COLUMN match_type TEXT DEFAULT 'league'");
+      await this.run("UPDATE fixtures SET match_type = 'league' WHERE match_type IS NULL", []);
     }
   }
 
@@ -166,6 +186,7 @@ class Database {
         id TEXT PRIMARY KEY,
         team_season_id TEXT,
         division_id TEXT,
+        match_type TEXT DEFAULT 'league',
         home_team_id TEXT NOT NULL,
         away_team_id TEXT NOT NULL,
         match_date DATETIME,
@@ -180,6 +201,39 @@ class Database {
         FOREIGN KEY (division_id) REFERENCES team_season_divisions (id),
         FOREIGN KEY (home_team_id) REFERENCES teams (id),
         FOREIGN KEY (away_team_id) REFERENCES teams (id)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS division_cups (
+        id TEXT PRIMARY KEY,
+        team_season_id TEXT NOT NULL,
+        division_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (team_season_id) REFERENCES team_seasons (id),
+        FOREIGN KEY (division_id) REFERENCES team_season_divisions (id),
+        UNIQUE (team_season_id, division_id)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS division_cup_matches (
+        id TEXT PRIMARY KEY,
+        cup_id TEXT NOT NULL,
+        round_number INTEGER NOT NULL,
+        match_number INTEGER NOT NULL,
+        fixture_id TEXT,
+        home_team_id TEXT,
+        away_team_id TEXT,
+        match_date DATETIME,
+        next_match_id TEXT,
+        winner_team_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (cup_id) REFERENCES division_cups (id),
+        FOREIGN KEY (fixture_id) REFERENCES fixtures (id),
+        FOREIGN KEY (home_team_id) REFERENCES teams (id),
+        FOREIGN KEY (away_team_id) REFERENCES teams (id),
+        FOREIGN KEY (next_match_id) REFERENCES division_cup_matches (id),
+        FOREIGN KEY (winner_team_id) REFERENCES teams (id),
+        UNIQUE (cup_id, round_number, match_number)
       )`,
 
       `CREATE TABLE IF NOT EXISTS team_season_division_teams (
@@ -294,6 +348,12 @@ class Database {
 
     // Ensure fixtures.division_id exists for older databases.
     await this.ensureFixturesDivisionColumn();
+
+    // Ensure fixtures.match_type exists for older databases.
+    await this.ensureFixturesMatchTypeColumn();
+
+    // Ensure division_cup_matches.match_date exists for older databases.
+    await this.ensureDivisionCupMatchesDateColumn();
 
     // Migrate team season statuses.
     await this.ensureTeamSeasonConcludedStatus();

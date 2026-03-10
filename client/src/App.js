@@ -8,6 +8,7 @@ import Fixtures from './pages/Fixtures';
 import FixtureDetail from './pages/FixtureDetail';
 import TeamStandings from './pages/TeamStandings';
 import PlayerRankings from './pages/PlayerRankings';
+import Cup from './pages/Cup';
 import Seasons from './pages/Seasons';
 import { DivisionProvider } from './context/DivisionContext';
 import { AuthProvider } from './context/AuthContext';
@@ -30,6 +31,7 @@ function App() {
                 <Route path="/fixtures" element={<Fixtures />} />
                 <Route path="/fixtures/:id" element={<FixtureDetail />} />
                 <Route path="/team-standings" element={<TeamStandings />} />
+                <Route path="/cup" element={<Cup />} />
                 <Route path="/player-rankings" element={<PlayerRankings />} />
                 <Route path="/seasons" element={<Seasons />} />
               </Routes>

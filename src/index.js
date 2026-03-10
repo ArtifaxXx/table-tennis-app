@@ -564,6 +564,16 @@ app.post('/api/fixtures/generate-schedule', requireAdmin, async (req, res) => {
         schedule_end_date: scheduleEndDate,
       });
       allFixtures.push(...fixtures);
+
+      // Also generate a cup draw + fixtures for this division.
+      await fixtureManager.generateDivisionCup({
+        ...(req.body || {}),
+        team_season_id,
+        division_id: d.id,
+        teamIds,
+        schedule_start_date: scheduleStartDate,
+        schedule_end_date: scheduleEndDate,
+      });
     }
 
     if (allFixtures.length === 0) {
@@ -572,6 +582,20 @@ app.post('/api/fixtures/generate-schedule', requireAdmin, async (req, res) => {
 
     await teamSeasonManager.setSeasonReady(team_season_id);
     res.json(allFixtures);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/cups/division', async (req, res) => {
+  try {
+    const seasonId = await resolveTeamSeasonId(req);
+    const divisionId = await resolveDivisionId(req, seasonId);
+    if (!seasonId || !divisionId) {
+      return res.json(null);
+    }
+    const cup = await fixtureManager.getDivisionCup(seasonId, divisionId);
+    res.json(cup);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
