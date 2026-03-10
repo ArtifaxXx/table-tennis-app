@@ -735,6 +735,89 @@ class FixtureManager {
     return this.getFixtureById(fixtureId);
   }
 
+  async setFixtureGameSets(fixtureId, games) {
+    if (!Array.isArray(games) || games.length === 0) {
+      throw new Error('games must be a non-empty array');
+    }
+
+    await this.assertFixtureSeasonIsActive(fixtureId);
+
+    const gameRows = await this.db.all(
+      `SELECT id, game_number
+       FROM fixture_games
+       WHERE fixture_id = ?`,
+      [fixtureId]
+    );
+    const gameIdByNumber = new Map(gameRows.map((g) => [g.game_number, g.id]));
+
+    await this.db.run('BEGIN');
+    try {
+      for (const g of games) {
+        const gameNumber = Number(g?.game_number);
+        const sets = g?.sets;
+
+        if (!Number.isInteger(gameNumber) || gameNumber < 1 || gameNumber > 9) {
+          throw new Error('Each game must include a valid game_number (1-9)');
+        }
+        if (!Array.isArray(sets) || sets.length < 3 || sets.length > 5) {
+          throw new Error('Each game must include sets with 3 to 5 set score objects');
+        }
+
+        const fixtureGameId = gameIdByNumber.get(gameNumber);
+        if (!fixtureGameId) {
+          throw new Error(`Game not found: ${gameNumber}`);
+        }
+
+        await this.db.run('DELETE FROM fixture_game_sets WHERE fixture_game_id = ?', [fixtureGameId]);
+
+        let homeSetsWon = 0;
+        let awaySetsWon = 0;
+
+        for (let i = 0; i < sets.length; i++) {
+          const s = sets[i];
+          if (typeof s.home_points !== 'number' || typeof s.away_points !== 'number') {
+            throw new Error('Each set must include numeric home_points and away_points');
+          }
+
+          await this.db.run(
+            `INSERT INTO fixture_game_sets (id, fixture_game_id, set_number, home_points, away_points)
+             VALUES (?, ?, ?, ?, ?)`,
+            [uuidv4(), fixtureGameId, i + 1, s.home_points, s.away_points]
+          );
+
+          if (s.home_points > s.away_points) homeSetsWon++;
+          if (s.away_points > s.home_points) awaySetsWon++;
+
+          if (homeSetsWon === 3 || awaySetsWon === 3) {
+            break;
+          }
+        }
+
+        let winnerSide = null;
+        if (homeSetsWon > awaySetsWon) winnerSide = 'home';
+        if (awaySetsWon > homeSetsWon) winnerSide = 'away';
+
+        await this.db.run(
+          `UPDATE fixture_games
+           SET home_sets_won = ?,
+               away_sets_won = ?,
+               winner_side = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [homeSetsWon, awaySetsWon, winnerSide, fixtureGameId]
+        );
+      }
+
+      await this.recomputeFixtureTotals(fixtureId);
+      await this.db.run('COMMIT');
+    } catch (e) {
+      await this.db.run('ROLLBACK');
+      throw e;
+    }
+
+    return this.getFixtureById(fixtureId);
+  }
+
   async recomputeFixtureTotals(fixtureId) {
     const games = await this.db.all(
       `SELECT home_sets_won, away_sets_won, winner_side

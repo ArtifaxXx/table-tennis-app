@@ -17,6 +17,7 @@ const FixtureDetail = () => {
   const [loading, setLoading] = useState(true);
   const [homeSelection, setHomeSelection] = useState(['', '', '']);
   const [awaySelection, setAwaySelection] = useState(['', '', '']);
+  const [editedSetsByGameNumber, setEditedSetsByGameNumber] = useState({});
 
   const canEdit = !!isAdmin && fixture?.season_status === 'active';
 
@@ -45,6 +46,16 @@ const FixtureDetail = () => {
     const awayLineup = (f.data.lineups || []).filter((l) => l.side === 'away').sort((a, b) => a.day_rank - b.day_rank);
     if (homeLineup.length === 3) setHomeSelection(homeLineup.map((x) => x.player_id));
     if (awayLineup.length === 3) setAwaySelection(awayLineup.map((x) => x.player_id));
+
+    const byNumber = {};
+    for (const g of f.data.games || []) {
+      const base = Array.isArray(g.sets) && g.sets.length > 0
+        ? g.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
+        : [];
+      while (base.length < 5) base.push(emptySet());
+      byNumber[g.game_number] = base.slice(0, 5);
+    }
+    setEditedSetsByGameNumber(byNumber);
   }, [id]);
 
   useEffect(() => {
@@ -78,10 +89,15 @@ const FixtureDetail = () => {
     }
   };
 
-  const updateGameSets = async (gameNumber, sets) => {
+  const saveAllGameSets = async () => {
     if (!canEdit) return;
+
+    const games = Object.entries(editedSetsByGameNumber)
+      .map(([gameNumber, sets]) => ({ game_number: Number(gameNumber), sets }))
+      .sort((a, b) => a.game_number - b.game_number);
+
     try {
-      await axios.put(`/api/fixtures/${id}/games/${gameNumber}/sets`, { sets });
+      await axios.put(`/api/fixtures/${id}/games/sets`, { games });
       await refresh();
       toast.success('Save successful');
     } catch (e) {
@@ -90,18 +106,38 @@ const FixtureDetail = () => {
     }
   };
 
+  const onChangeGameSets = useCallback((gameNumber, nextSets) => {
+    setEditedSetsByGameNumber((prev) => ({
+      ...prev,
+      [gameNumber]: nextSets,
+    }));
+  }, []);
+
   const designationByPlayerId = useMemo(() => {
     const m = new Map();
-    for (let i = 0; i < homeSelection.length; i++) {
-      const pid = homeSelection[i];
+
+    const savedHome = (fixture?.lineups || [])
+      .filter((l) => l.side === 'home')
+      .slice()
+      .sort((a, b) => a.day_rank - b.day_rank);
+    const savedAway = (fixture?.lineups || [])
+      .filter((l) => l.side === 'away')
+      .slice()
+      .sort((a, b) => a.day_rank - b.day_rank);
+
+    const homeIds = savedHome.length === 3 ? savedHome.map((l) => l.player_id) : homeSelection;
+    const awayIds = savedAway.length === 3 ? savedAway.map((l) => l.player_id) : awaySelection;
+
+    for (let i = 0; i < homeIds.length; i++) {
+      const pid = homeIds[i];
       if (pid) m.set(pid, `H${i + 1}`);
     }
-    for (let i = 0; i < awaySelection.length; i++) {
-      const pid = awaySelection[i];
+    for (let i = 0; i < awayIds.length; i++) {
+      const pid = awayIds[i];
       if (pid) m.set(pid, `A${i + 1}`);
     }
     return m;
-  }, [homeSelection, awaySelection]);
+  }, [fixture?.lineups, homeSelection, awaySelection]);
 
   const formatPlayerWithDesignation = useCallback(
     (playerId, playerName) => {
@@ -148,7 +184,7 @@ const FixtureDetail = () => {
         </div>
 
         <div className="text-xs text-gray-500 mt-2">
-          Lineup order should follow roster slot (mains first, subs last). Incorrect ordering will be flagged as a violation.
+          Lineup order should follow roster slot (mains first, subs last). Incorrect ordering will be flagged as a Violation.
         </div>
       </Card>
     );
@@ -178,6 +214,11 @@ const FixtureDetail = () => {
             <div className="font-medium">
               {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
             </div>
+            {canEdit && (
+              <button className="btn btn-success" onClick={saveAllGameSets}>
+                Save Fixture
+              </button>
+            )}
             <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
         }
@@ -203,7 +244,8 @@ const FixtureDetail = () => {
               game={g}
               canEdit={canEdit}
               formatPlayerWithDesignation={formatPlayerWithDesignation}
-              onSave={(sets) => updateGameSets(g.game_number, sets)}
+              sets={editedSetsByGameNumber[g.game_number] || [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()]}
+              onChangeSets={(nextSets) => onChangeGameSets(g.game_number, nextSets)}
             />
           ))}
         </div>
@@ -212,23 +254,7 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
-  const [sets, setSets] = useState(() => {
-    const base = Array.isArray(game.sets) && game.sets.length > 0
-      ? game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
-      : [];
-    while (base.length < 5) base.push(emptySet());
-    return base.slice(0, 5);
-  });
-
-  useEffect(() => {
-    if (Array.isArray(game.sets) && game.sets.length > 0) {
-      const next = game.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }));
-      while (next.length < 5) next.push(emptySet());
-      setSets(next.slice(0, 5));
-    }
-  }, [game.id, game.sets]);
-
+const GameCard = ({ game, canEdit, sets, onChangeSets, formatPlayerWithDesignation }) => {
   const title = () => {
     if (game.game_type === 'singles') {
       return `${formatPlayerWithDesignation(game.home_player_a_id, game.home_player_a_name)} vs ${formatPlayerWithDesignation(game.away_player_a_id, game.away_player_a_name)}`;
@@ -290,7 +316,6 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
             {game.winner_side ? ` (winner: ${game.winner_side})` : ''}
           </div>
         </div>
-        {canEdit && <button className="btn btn-success" onClick={() => onSave(sets)}>Save Sets</button>}
       </div>
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
@@ -307,7 +332,7 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], home_points: parseInt(e.target.value || '0', 10) };
-                  setSets(next);
+                  onChangeSets(next);
                 }}
               />
               <input
@@ -319,7 +344,7 @@ const GameCard = ({ game, canEdit, onSave, formatPlayerWithDesignation }) => {
                 onChange={(e) => {
                   const next = [...sets];
                   next[idx] = { ...next[idx], away_points: parseInt(e.target.value || '0', 10) };
-                  setSets(next);
+                  onChangeSets(next);
                 }}
               />
             </div>

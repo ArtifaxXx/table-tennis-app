@@ -596,6 +596,15 @@ app.put('/api/fixtures/:id/games/:gameNumber/sets', requireAdmin, async (req, re
   }
 });
 
+app.put('/api/fixtures/:id/games/sets', requireAdmin, async (req, res) => {
+  try {
+    const fixture = await fixtureManager.setFixtureGameSets(req.params.id, req.body.games);
+    res.json(fixture);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/team-standings', async (req, res) => {
   try {
     const seasonId = await resolveTeamSeasonId(req);
