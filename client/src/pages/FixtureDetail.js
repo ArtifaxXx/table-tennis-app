@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader';
 import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
 const emptySet = () => ({ home_points: 0, away_points: 0 });
+const emptySets5 = () => [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()];
 
 const FixtureDetail = () => {
   const { isAdmin } = useAuth();
@@ -49,6 +50,9 @@ const FixtureDetail = () => {
     if (awayLineup.length === 3) setAwaySelection(awayLineup.map((x) => x.player_id));
 
     const byNumber = {};
+    for (let n = 1; n <= 9; n++) {
+      byNumber[n] = emptySets5();
+    }
     for (const g of f.data.games || []) {
       const base = Array.isArray(g.sets) && g.sets.length > 0
         ? g.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
@@ -77,29 +81,24 @@ const FixtureDetail = () => {
     };
   }, [refresh, toast]);
 
-  const saveBothLineups = async () => {
+  const saveFixture = async () => {
     if (!canEdit) return;
+
+    const games = Array.from({ length: 9 }, (_, i) => i + 1)
+      .map((gameNumber) => ({
+        game_number: gameNumber,
+        sets: editedSetsByGameNumber[gameNumber] || emptySets5(),
+      }));
+
     try {
       await Promise.all([
         axios.put(`/api/fixtures/${id}/lineups/home`, { playerIds: homeSelection }),
         axios.put(`/api/fixtures/${id}/lineups/away`, { playerIds: awaySelection }),
       ]);
+
+      // Ensure games exist before attempting to save sets.
       await refresh();
-      toast.success('Save successful');
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || e.message);
-    }
-  };
 
-  const saveAllGameSets = async () => {
-    if (!canEdit) return;
-
-    const games = Object.entries(editedSetsByGameNumber)
-      .map(([gameNumber, sets]) => ({ game_number: Number(gameNumber), sets }))
-      .sort((a, b) => a.game_number - b.game_number);
-
-    try {
       await axios.put(`/api/fixtures/${id}/games/sets`, { games });
       await refresh();
       toast.success('Save successful');
@@ -220,10 +219,35 @@ const FixtureDetail = () => {
     );
   };
 
+  const gamesByNumber = useMemo(() => {
+    const m = new Map();
+    for (const g of fixture?.games || []) {
+      m.set(g.game_number, g);
+    }
+    return m;
+  }, [fixture?.games]);
+
+  const displayGames = useMemo(() => {
+    const typeByNumber = (n) => ([1, 2, 3, 7, 8, 9].includes(n) ? 'singles' : 'doubles');
+    const out = [];
+    for (let n = 1; n <= 9; n++) {
+      const existing = gamesByNumber.get(n);
+      out.push(
+        existing || {
+          id: `virtual-${n}`,
+          game_number: n,
+          game_type: typeByNumber(n),
+          home_sets_won: 0,
+          away_sets_won: 0,
+          winner_side: null,
+        }
+      );
+    }
+    return out;
+  }, [gamesByNumber]);
+
   if (loading) return <div className="text-center py-8">Loading fixture...</div>;
   if (!fixture) return <div className="text-center py-8">Fixture not found</div>;
-
-  const games = fixture.games || [];
 
   return (
     <div className="space-y-6">
@@ -244,8 +268,18 @@ const FixtureDetail = () => {
             <div className="font-medium whitespace-nowrap">
               Score: {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
             </div>
-            {canEdit && <button className="btn btn-success" onClick={saveBothLineups}>Save Lineups</button>}
-            {canEdit && <button className="btn btn-success" onClick={saveAllGameSets}>Save Fixture</button>}
+            <span
+              className={`px-2 py-1 text-xs rounded-full ${
+                fixture.status === 'completed'
+                  ? 'bg-green-100 text-green-800'
+                  : fixture.status === 'in_progress'
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-yellow-100 text-yellow-800'
+              }`}
+            >
+              {fixture.status === 'in_progress' ? 'In progress' : fixture.status}
+            </span>
+            {canEdit && <button className="btn btn-success" onClick={saveFixture}>Save</button>}
             <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
         }
@@ -258,20 +292,14 @@ const FixtureDetail = () => {
 
       <Card>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">9 games (best of 5)</h3>
-        {games.length === 0 && (
-          <div className="text-gray-500">
-            Games will be generated once both lineups are saved.
-          </div>
-        )}
-
         <div className="space-y-4">
-          {games.map((g) => (
+          {displayGames.map((g) => (
             <GameCard
               key={g.id}
               game={g}
               canEdit={canEdit}
               slotName={slotName}
-              sets={editedSetsByGameNumber[g.game_number] || [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()]}
+              sets={editedSetsByGameNumber[g.game_number] || emptySets5()}
               onChangeSets={(nextSets) => onChangeGameSets(g.game_number, nextSets)}
             />
           ))}

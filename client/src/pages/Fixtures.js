@@ -153,7 +153,7 @@ const Fixtures = () => {
                 <th className="cursor-pointer" onClick={() => requestSort('home_team_name')}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('away_team_name')}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>Complete?{sortIndicator(sortConfig, 'completeness_status')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>VALIDATION{sortIndicator(sortConfig, 'completeness_status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('home_games_won', (f) => (f.home_games_won || 0) - (f.away_games_won || 0))}>Result{sortIndicator(sortConfig, 'home_games_won')}</th>
                 <th></th>
               </tr>
