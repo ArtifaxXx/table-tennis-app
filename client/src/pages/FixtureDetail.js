@@ -148,7 +148,7 @@ const FixtureDetail = () => {
         </div>
 
         <div className="text-xs text-gray-500 mt-2">
-          Day order is enforced automatically by roster slot (mains first, subs last).
+          Lineup order should follow roster slot (mains first, subs last). Incorrect ordering will be flagged as a violation.
         </div>
       </Card>
     );

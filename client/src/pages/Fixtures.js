@@ -76,12 +76,14 @@ const Fixtures = () => {
   const completenessBadge = (c) => {
     const styles = {
       complete: 'bg-green-50 text-green-800 border-green-200',
+      violation: 'bg-red-50 text-red-800 border-red-200',
       missing_lineups: 'bg-gray-50 text-gray-700 border-gray-200',
       missing_games: 'bg-gray-50 text-gray-700 border-gray-200',
       missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
     };
     const labels = {
       complete: 'Complete',
+      violation: 'Violation',
       missing_lineups: 'Lineups',
       missing_games: 'Games',
       missing_sets: 'Sets',

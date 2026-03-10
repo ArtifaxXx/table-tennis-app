@@ -444,6 +444,9 @@ const Teams = () => {
 
               <div>
                 <div className="font-medium text-gray-700 mb-2">Main (3 players)</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  Only these 3 players are ranked (slots 1-3). They should be your strongest players in order.
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[0, 1, 2].map((idx) => (
                     <SearchableSelect
@@ -464,6 +467,9 @@ const Teams = () => {
 
               <div>
                 <div className="font-medium text-gray-700 mb-2">Subs (up to 3)</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  Subs are not ranked (slots 4-6). In fixtures, a sub selected above a main (or out of strength order) will show as a violation.
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[0, 1, 2].map((idx) => (
                     <SearchableSelect

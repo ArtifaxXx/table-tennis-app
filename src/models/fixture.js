@@ -278,6 +278,51 @@ class FixtureManager {
                   WHERE fg.fixture_id = f.id
                     AND (SELECT COUNT(*) FROM fixture_game_sets s WHERE s.fixture_game_id = fg.id) < 3
                 ) THEN 'missing_sets'
+                WHEN (
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 1) >
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2)
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2) >
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 3)
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 1) >
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2)
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) >
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 3)
+                  )
+                ) THEN 'violation'
                 ELSE 'complete'
               END as completeness_status
        FROM fixtures f
@@ -521,22 +566,11 @@ class FixtureManager {
       throw new Error('Duplicate player IDs in lineup');
     }
 
-    // Enforce substitution ordering rules:
-    // - mains keep their relative order by roster slot (1,2,3)
-    // - if a main is missing, remaining mains shift up
-    // - subs (slots 4-6) always appear last
-    const slotByPlayer = new Map(roster.map(r => [r.player_id, r.slot]));
-    const orderedPlayerIds = [...playerIds].sort((a, b) => {
-      const sa = slotByPlayer.get(a);
-      const sb = slotByPlayer.get(b);
-      return sa - sb;
-    });
-
     // Clear old lineup for side
     await this.db.run('DELETE FROM fixture_lineups WHERE fixture_id = ? AND side = ?', [fixtureId, side]);
 
     for (let idx = 0; idx < 3; idx++) {
-      const playerId = orderedPlayerIds[idx];
+      const playerId = playerIds[idx];
       const rosterRow = roster.find(r => r.player_id === playerId);
       const isSub = rosterRow ? rosterRow.slot >= 4 : 0;
 
