@@ -192,6 +192,64 @@ class FixtureManager {
     this.db = database;
   }
 
+  async forfeitFixture(fixtureId, winnerTeamId) {
+    if (!fixtureId) throw new Error('fixtureId is required');
+    if (!winnerTeamId) throw new Error('winner_team_id is required');
+
+    const fixture = await this.db.get('SELECT * FROM fixtures WHERE id = ?', [fixtureId]);
+    if (!fixture) throw new Error('Fixture not found');
+
+    await this.assertFixtureSeasonIsActive(fixtureId);
+
+    if (winnerTeamId !== fixture.home_team_id && winnerTeamId !== fixture.away_team_id) {
+      throw new Error('winner_team_id must be either the home or away team');
+    }
+
+    const matchType = fixture.match_type || 'league';
+    const winTarget = matchType === 'cup' ? 5 : 9;
+    const homeWon = winnerTeamId === fixture.home_team_id;
+
+    await this.db.run('BEGIN TRANSACTION');
+    try {
+      // Clear any recorded detail for this fixture.
+      await this.db.run('DELETE FROM fixture_lineups WHERE fixture_id = ?', [fixtureId]);
+      await this.db.run(
+        `DELETE FROM fixture_game_sets
+         WHERE fixture_game_id IN (SELECT id FROM fixture_games WHERE fixture_id = ?)`,
+        [fixtureId]
+      );
+      await this.db.run('DELETE FROM fixture_games WHERE fixture_id = ?', [fixtureId]);
+
+      await this.db.run(
+        `UPDATE fixtures
+         SET status = 'completed',
+             forfeited = 1,
+             forfeit_winner_team_id = ?,
+             home_games_won = ?,
+             away_games_won = ?,
+             home_sets_won = 0,
+             away_sets_won = 0,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [winnerTeamId, homeWon ? winTarget : 0, homeWon ? 0 : winTarget, fixtureId]
+      );
+
+      await this.db.run('COMMIT');
+    } catch (e) {
+      try {
+        await this.db.run('ROLLBACK');
+      } catch (ignore) {
+        // ignore
+      }
+      throw e;
+    }
+
+    // For cup fixtures, update bracket winner and potentially create next fixture.
+    await this.advanceCupWinnerFromFixture(fixtureId);
+
+    return this.getFixtureById(fixtureId);
+  }
+
   async createOrResetDivisionCup(teamSeasonId, divisionId) {
     if (!teamSeasonId) throw new Error('team_season_id is required');
     if (!divisionId) throw new Error('division_id is required');
@@ -711,6 +769,7 @@ class FixtureManager {
               ht.name as home_team_name,
               at.name as away_team_name,
               CASE
+                WHEN (f.forfeited = 1) THEN 'complete'
                 WHEN (
                   (SELECT COUNT(DISTINCT fl.day_rank)
                    FROM fixture_lineups fl
@@ -741,6 +800,16 @@ class FixtureManager {
                     (SELECT tr.slot
                      FROM fixture_lineups fl
                      JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 1) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                      WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 1) >
                     (SELECT tr.slot
                      FROM fixture_lineups fl
@@ -749,6 +818,16 @@ class FixtureManager {
                   )
                   OR
                   (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 3) <= 3
+                    AND
                     (SELECT tr.slot
                      FROM fixture_lineups fl
                      JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
@@ -763,6 +842,16 @@ class FixtureManager {
                     (SELECT tr.slot
                      FROM fixture_lineups fl
                      JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 1) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                      WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 1) >
                     (SELECT tr.slot
                      FROM fixture_lineups fl
@@ -774,11 +863,81 @@ class FixtureManager {
                     (SELECT tr.slot
                      FROM fixture_lineups fl
                      JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 3) <= 3
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                      WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) >
                     (SELECT tr.slot
                      FROM fixture_lineups fl
                      JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                      WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 3)
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 1) >= 4
+                    AND (
+                      (SELECT tr.slot
+                       FROM fixture_lineups fl
+                       JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                       WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2) <= 3
+                      OR
+                      (SELECT tr.slot
+                       FROM fixture_lineups fl
+                       JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                       WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 3) <= 3
+                    )
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 2) >= 4
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank = 3) <= 3
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 1) >= 4
+                    AND (
+                      (SELECT tr.slot
+                       FROM fixture_lineups fl
+                       JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                       WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) <= 3
+                      OR
+                      (SELECT tr.slot
+                       FROM fixture_lineups fl
+                       JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                       WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 3) <= 3
+                    )
+                  )
+                  OR
+                  (
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 2) >= 4
+                    AND
+                    (SELECT tr.slot
+                     FROM fixture_lineups fl
+                     JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
+                     WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank = 3) <= 3
                   )
                 ) THEN 'violation'
                 ELSE 'complete'
@@ -1064,17 +1223,17 @@ class FixtureManager {
 
     const games = [
       // 1-3 singles
-      { game_number: 1, game_type: 'singles', homeA: H1, awayA: A2 },
-      { game_number: 2, game_type: 'singles', homeA: H2, awayA: A3 },
-      { game_number: 3, game_type: 'singles', homeA: H3, awayA: A1 },
+      { game_number: 1, game_type: 'singles', homeA: H3, awayA: A2 },
+      { game_number: 2, game_type: 'singles', homeA: H2, awayA: A1 },
+      { game_number: 3, game_type: 'singles', homeA: H1, awayA: A3 },
       // 4-6 doubles
       { game_number: 4, game_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
-      { game_number: 5, game_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
-      { game_number: 6, game_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
+      { game_number: 5, game_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
+      { game_number: 6, game_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
       // 7-9 singles
-      { game_number: 7, game_type: 'singles', homeA: H1, awayA: A1 },
-      { game_number: 8, game_type: 'singles', homeA: H2, awayA: A2 },
-      { game_number: 9, game_type: 'singles', homeA: H3, awayA: A3 },
+      { game_number: 7, game_type: 'singles', homeA: H2, awayA: A2 },
+      { game_number: 8, game_type: 'singles', homeA: H3, awayA: A3 },
+      { game_number: 9, game_type: 'singles', homeA: H1, awayA: A1 },
     ];
 
     for (const g of games) {

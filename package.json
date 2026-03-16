@@ -7,11 +7,16 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node src/seed.js",
+    "reset-db": "node src/reset-db.js",
+    "snapshot-db": "node src/snapshot-db.js",
+    "save-prem-snapshot": "node src/save-db-snapshot.js prem-division",
+    "restore-prem-snapshot": "node src/restore-db-snapshot.js prem-division --yes",
     "test": "jest",
     "build": "npm run build:client && npm run build:server",
     "build:client": "cd client && npm run build",
     "build:server": "echo 'Server build complete'",
-    "client": "cd client && npm start"
+    "client": "cd client && npm start",
+    "update-season-2025-2026": "node src/update-season-2025-2026.js"
   },
   "keywords": ["table-tennis", "league", "sports", "management"],
   "author": "",

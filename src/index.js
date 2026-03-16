@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 const Database = require('./database');
 const PlayerManager = require('./models/player');
 const MatchManager = require('./models/match');
@@ -13,6 +14,7 @@ const TeamLeagueManager = require('./models/teamLeague');
 const TeamSeasonManager = require('./models/teamSeason');
 const TeamSeasonDivisionManager = require('./models/teamSeasonDivision');
 const { seedDatabase } = require('./seed');
+const { populateRealData } = require('./realData');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -131,6 +133,70 @@ app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, async (req, res) => {
+  if (isSeeding) {
+    return res.status(409).json({ error: 'Seed already in progress' });
+  }
+
+  isSeeding = true;
+  try {
+    const snapshotDir = path.join(__dirname, '../data/seed-snapshots/prem-division');
+    const dataDir = path.join(__dirname, '../data');
+    const srcDb = path.join(snapshotDir, 'league.db');
+    const srcWal = path.join(snapshotDir, 'league.db-wal');
+    const srcShm = path.join(snapshotDir, 'league.db-shm');
+    const destDb = path.join(dataDir, 'league.db');
+    const destWal = path.join(dataDir, 'league.db-wal');
+    const destShm = path.join(dataDir, 'league.db-shm');
+
+    if (!fs.existsSync(srcDb)) {
+      throw new Error('Premier Division snapshot not found. Run npm run save-prem-snapshot first.');
+    }
+
+    await db.close();
+
+    fs.copyFileSync(srcDb, destDb);
+
+    const walCopied = fs.existsSync(srcWal) ? (fs.copyFileSync(srcWal, destWal), true) : false;
+    const shmCopied = fs.existsSync(srcShm) ? (fs.copyFileSync(srcShm, destShm), true) : false;
+
+    if (!walCopied && fs.existsSync(destWal)) fs.rmSync(destWal);
+    if (!shmCopied && fs.existsSync(destShm)) fs.rmSync(destShm);
+
+    await db.initialize();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    isSeeding = false;
+  }
+});
+
+app.post('/api/admin/populate-real', requireAdmin, requireSeedToken, async (req, res) => {
+  if (isSeeding) {
+    return res.status(409).json({ error: 'Seed already in progress' });
+  }
+
+  isSeeding = true;
+  try {
+    console.log('Admin real-data populate started');
+    const popDb = new Database();
+    await popDb.initialize();
+    try {
+      const seasonName = req.body && typeof req.body.seasonName === 'string' ? req.body.seasonName : null;
+      const result = await populateRealData(popDb, { seasonName });
+      res.json(result);
+    } finally {
+      await popDb.close();
+    }
+    console.log('Admin real-data populate completed');
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    isSeeding = false;
   }
 });
 
@@ -623,6 +689,19 @@ app.put('/api/fixtures/:id/games/:gameNumber/sets', requireAdmin, async (req, re
 app.put('/api/fixtures/:id/games/sets', requireAdmin, async (req, res) => {
   try {
     const fixture = await fixtureManager.setFixtureGameSets(req.params.id, req.body.games);
+    res.json(fixture);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/fixtures/:id/forfeit', requireAdmin, async (req, res) => {
+  try {
+    const winner_team_id = req.body && req.body.winner_team_id ? req.body.winner_team_id : null;
+    if (!winner_team_id) {
+      throw new Error('winner_team_id is required');
+    }
+    const fixture = await fixtureManager.forfeitFixture(req.params.id, winner_team_id);
     res.json(fixture);
   } catch (error) {
     res.status(400).json({ error: error.message });

@@ -124,7 +124,8 @@ const Teams = () => {
   const [contactPhone, setContactPhone] = useState('');
   const [homeDay, setHomeDay] = useState('');
   const [mainIds, setMainIds] = useState(['', '', '']);
-  const [subIds, setSubIds] = useState(['', '', '']);
+  const SUB_COUNT = 10;
+  const [subIds, setSubIds] = useState(Array(SUB_COUNT).fill(''));
 
   const didInitRef = useRef(false);
 
@@ -261,9 +262,13 @@ const Teams = () => {
     setContactPhone(team.contact_phone || '');
     setHomeDay(team.home_day == null ? '' : String(team.home_day));
     const mains = team.roster.filter((r) => r.slot >= 1 && r.slot <= 3).sort((a, b) => a.slot - b.slot);
-    const subs = team.roster.filter((r) => r.slot >= 4 && r.slot <= 6).sort((a, b) => a.slot - b.slot);
+    const subs = team.roster.filter((r) => r.slot >= 4 && r.slot <= 13).sort((a, b) => a.slot - b.slot);
     setMainIds([mains[0]?.player_id || '', mains[1]?.player_id || '', mains[2]?.player_id || '']);
-    setSubIds([subs[0]?.player_id || '', subs[1]?.player_id || '', subs[2]?.player_id || '']);
+    const nextSubs = Array(SUB_COUNT).fill('');
+    for (let i = 0; i < SUB_COUNT; i++) {
+      nextSubs[i] = subs[i]?.player_id || '';
+    }
+    setSubIds(nextSubs);
   };
 
   const onSelectTeam = (id) => {
@@ -466,12 +471,12 @@ const Teams = () => {
               </div>
 
               <div>
-                <div className="font-medium text-gray-700 mb-2">Subs (up to 3)</div>
+                <div className="font-medium text-gray-700 mb-2">Subs (up to 10)</div>
                 <div className="text-xs text-gray-500 mb-2">
-                  Subs are not ranked (slots 4-6). In fixtures, a sub selected above a main (or out of strength order) will show as a violation.
+                  Subs are not ranked (slots 4-13). In fixtures, a sub selected above a main (or out of strength order) will show as a violation.
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {[0, 1, 2].map((idx) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Array.from({ length: SUB_COUNT }, (_, idx) => idx).map((idx) => (
                     <SearchableSelect
                       key={idx}
                       options={playerOptions}

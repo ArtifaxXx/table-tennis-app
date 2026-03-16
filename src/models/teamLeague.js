@@ -313,6 +313,82 @@ class TeamLeagueManager {
   }
 
   async getPlayerRankings(teamSeasonId, divisionId = null) {
+    let basePlayersSql = '';
+    let basePlayersParams = [];
+
+    if (divisionId) {
+      // Division view: only include players registered to teams in this division.
+      basePlayersSql = `
+        WITH base_players AS (
+          SELECT DISTINCT tr.player_id
+          FROM team_season_division_teams dt
+          JOIN team_roster tr ON tr.team_id = dt.team_id
+          JOIN players p ON p.id = tr.player_id
+          WHERE dt.division_id = ?
+            AND tr.active = 1
+            AND p.active = 1
+        )
+      `;
+      basePlayersParams = [divisionId];
+    } else if (teamSeasonId) {
+      // Season view: include players who appear in that season's league fixtures.
+      basePlayersSql = `
+        WITH base_players AS (
+          SELECT DISTINCT player_id
+          FROM (
+            SELECT fg.home_player_a_id as player_id
+            FROM fixture_games fg
+            JOIN fixtures f ON fg.fixture_id = f.id
+            WHERE f.team_season_id = ?
+              AND f.status = 'completed'
+              AND (f.match_type IS NULL OR f.match_type = 'league')
+              AND fg.home_player_a_id IS NOT NULL
+
+            UNION ALL
+
+            SELECT fg.away_player_a_id as player_id
+            FROM fixture_games fg
+            JOIN fixtures f ON fg.fixture_id = f.id
+            WHERE f.team_season_id = ?
+              AND f.status = 'completed'
+              AND (f.match_type IS NULL OR f.match_type = 'league')
+              AND fg.away_player_a_id IS NOT NULL
+
+            UNION ALL
+
+            SELECT fg.home_player_b_id as player_id
+            FROM fixture_games fg
+            JOIN fixtures f ON fg.fixture_id = f.id
+            WHERE f.team_season_id = ?
+              AND f.status = 'completed'
+              AND (f.match_type IS NULL OR f.match_type = 'league')
+              AND fg.home_player_b_id IS NOT NULL
+
+            UNION ALL
+
+            SELECT fg.away_player_b_id as player_id
+            FROM fixture_games fg
+            JOIN fixtures f ON fg.fixture_id = f.id
+            WHERE f.team_season_id = ?
+              AND f.status = 'completed'
+              AND (f.match_type IS NULL OR f.match_type = 'league')
+              AND fg.away_player_b_id IS NOT NULL
+          ) t
+        )
+      `;
+      basePlayersParams = [teamSeasonId, teamSeasonId, teamSeasonId, teamSeasonId];
+    } else {
+      // No context: fallback to all active players.
+      basePlayersSql = `
+        WITH base_players AS (
+          SELECT id as player_id
+          FROM players
+          WHERE active = 1
+        )
+      `;
+      basePlayersParams = [];
+    }
+
     const where = [];
     const baseParams = [];
     if (teamSeasonId) {
@@ -334,7 +410,8 @@ class TeamLeagueManager {
     ];
 
     const stats = await this.db.all(
-      `SELECT
+      `${basePlayersSql}
+       SELECT
          p.id as player_id,
          p.name as player_name,
          COALESCE(w.wins, 0) as singles_wins,
@@ -353,7 +430,8 @@ class TeamLeagueManager {
            COALESCE(dw.wins, 0) * 100.0 / NULLIF((COALESCE(dw.wins, 0) + COALESCE(dl.losses, 0)), 0),
            1
          ) as doubles_win_pct
-       FROM players p
+       FROM base_players bp
+       JOIN players p ON p.id = bp.player_id
        LEFT JOIN (
          SELECT
            CASE
@@ -505,9 +583,8 @@ class TeamLeagueManager {
          ) t
          GROUP BY player_id
        ) dl ON dl.player_id = p.id
-       WHERE p.active = 1
        ORDER BY singles_wins DESC, player_name ASC`,
-      params
+      [...basePlayersParams, ...params]
     );
 
     const list = stats;

@@ -121,8 +121,8 @@ class TeamManager {
       throw new Error('Main roster must contain exactly 3 player IDs');
     }
 
-    if (!Array.isArray(subs) || subs.length > 3) {
-      throw new Error('Subs roster must contain up to 3 player IDs');
+    if (!Array.isArray(subs) || subs.length > 10) {
+      throw new Error('Subs roster must contain up to 10 player IDs');
     }
 
     const unique = new Set([...main, ...subs]);

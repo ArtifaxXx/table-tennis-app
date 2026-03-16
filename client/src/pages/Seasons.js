@@ -575,7 +575,10 @@ const Seasons = () => {
 
             <div className="space-y-3 text-sm text-gray-700">
               <div>
-                It creates a full home-and-away schedule for each division (every team plays every other team twice).
+                It creates a full home-and-away league schedule for each division (every team plays every other team twice).
+              </div>
+              <div>
+                It also creates cup fixtures for each division cup draw (knockout bracket).
               </div>
               <div>
                 Matches are placed inside the season scheduling window (Start/End dates) and it tries to:

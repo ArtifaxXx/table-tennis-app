@@ -14,13 +14,26 @@ const Fixtures = () => {
   const { isAdmin } = useAuth();
   const [fixtures, setFixtures] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editedDatesByFixtureId, setEditedDatesByFixtureId] = useState({});
   const didInitRef = useRef(false);
   const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
+
+  const toDateTimeLocalValue = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
   const fetchFixtures = useCallback(async (seasonId, divisionId) => {
     try {
       const res = await axios.get('/api/fixtures', { params: { seasonId, divisionId } });
       setFixtures(res.data);
+      const nextEdited = {};
+      for (const f of res.data || []) {
+        nextEdited[f.id] = toDateTimeLocalValue(f.match_date);
+      }
+      setEditedDatesByFixtureId(nextEdited);
     } catch (e) {
       console.error(e);
     } finally {
@@ -43,21 +56,15 @@ const Fixtures = () => {
 
   const { items: sortedFixtures, requestSort, sortConfig } = useSortableData(fixtures, {
     key: 'match_date',
-    direction: 'desc',
+    direction: 'asc',
   });
-
-  const toDateTimeLocalValue = (iso) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
 
   const updateFixtureDate = async (fixtureId, dateTimeLocal) => {
     const asIso = dateTimeLocal ? new Date(dateTimeLocal).toISOString() : null;
     try {
       const res = await axios.put(`/api/fixtures/${fixtureId}`, { match_date: asIso });
       setFixtures((prev) => prev.map((f) => (f.id === fixtureId ? res.data : f)));
+      setEditedDatesByFixtureId((prev) => ({ ...prev, [fixtureId]: toDateTimeLocalValue(res.data.match_date) }));
       toast.success('Save successful');
     } catch (e) {
       console.error(e);
@@ -151,8 +158,8 @@ const Fixtures = () => {
               <tr>
                 <th className="cursor-pointer" onClick={() => requestSort('match_date')}>Date{sortIndicator(sortConfig, 'match_date')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('match_type')}>Type{sortIndicator(sortConfig, 'match_type')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('home_team_name')}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('away_team_name')}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('home_team_name', (f) => String(f?.home_team_name || '').trim().toLowerCase())}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('away_team_name', (f) => String(f?.away_team_name || '').trim().toLowerCase())}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>VALIDATION{sortIndicator(sortConfig, 'completeness_status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('home_games_won', (f) => (f.home_games_won || 0) - (f.away_games_won || 0))}>Result{sortIndicator(sortConfig, 'home_games_won')}</th>
@@ -163,13 +170,27 @@ const Fixtures = () => {
               {sortedFixtures.map((f) => (
                 <tr key={f.id}>
                   <td>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={toDateTimeLocalValue(f.match_date)}
-                      onChange={(e) => updateFixtureDate(f.id, e.target.value)}
-                      disabled={!canEdit}
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="input"
+                        type="datetime-local"
+                        value={editedDatesByFixtureId[f.id] ?? toDateTimeLocalValue(f.match_date)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditedDatesByFixtureId((prev) => ({ ...prev, [f.id]: v }));
+                        }}
+                        disabled={!canEdit}
+                      />
+                      {canEdit && (editedDatesByFixtureId[f.id] ?? toDateTimeLocalValue(f.match_date)) !== toDateTimeLocalValue(f.match_date) && (
+                        <button
+                          className="btn btn-success"
+                          type="button"
+                          onClick={() => updateFixtureDate(f.id, editedDatesByFixtureId[f.id] ?? '')}
+                        >
+                          Save
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="text-sm text-gray-700">
                     {(f.match_type || 'league') === 'cup' ? 'Cup' : 'League'}

@@ -37,8 +37,9 @@ const FixtureDetail = () => {
   const [homeSelection, setHomeSelection] = useState(['', '', '']);
   const [awaySelection, setAwaySelection] = useState(['', '', '']);
   const [editedSetsByGameNumber, setEditedSetsByGameNumber] = useState({});
+  const [forfeitWinner, setForfeitWinner] = useState('home');
 
-  const canEdit = !!isAdmin && fixture?.season_status === 'active';
+  const canEdit = !!isAdmin && fixture?.season_status === 'active' && !fixture?.forfeited;
 
   const homeRoster = useMemo(() => {
     if (!fixture) return [];
@@ -78,7 +79,39 @@ const FixtureDetail = () => {
       byNumber[g.game_number] = base.slice(0, 5);
     }
     setEditedSetsByGameNumber(byNumber);
+
+    if (f.data) {
+      const winnerId = f.data.forfeit_winner_team_id;
+      if (winnerId && winnerId === f.data.away_team_id) setForfeitWinner('away');
+      else setForfeitWinner('home');
+    }
   }, [id]);
+
+  const onForfeit = async () => {
+    if (!isAdmin) return;
+    if (!fixture) return;
+    if (fixture.season_status !== 'active') {
+      toast.error('Fixtures can only be forfeited while the season is active');
+      return;
+    }
+
+    const winnerTeamId = forfeitWinner === 'away' ? fixture.away_team_id : fixture.home_team_id;
+    const label = forfeitWinner === 'away' ? fixture.away_team_name : fixture.home_team_name;
+    const score = (fixture.match_type || 'league') === 'cup' ? '5-0' : '9-0';
+
+    if (!window.confirm(`Forfeit this fixture? Winner will be ${label} (${score}). This clears any lineups/games/sets.`)) {
+      return;
+    }
+
+    try {
+      await axios.post(`/api/fixtures/${id}/forfeit`, { winner_team_id: winnerTeamId });
+      await refresh();
+      toast.success('Fixture forfeited');
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.response?.data?.error || e.message);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -174,7 +207,20 @@ const FixtureDetail = () => {
           const a = slots[i];
           const b = slots[j];
           if (a == null || b == null) continue;
-          if (a > b) {
+
+          const aIsMain = a >= 1 && a <= 3;
+          const bIsMain = b >= 1 && b <= 3;
+          const aIsSub = a >= 4;
+
+          // Preserve ordering for the numbered players (1-3).
+          if (aIsMain && bIsMain && a > b) {
+            bad.add(i);
+            bad.add(j);
+          }
+
+          // Subs can be in any order relative to other subs.
+          // Only enforce that subs appear after numbered players.
+          if (aIsSub && bIsMain) {
             bad.add(i);
             bad.add(j);
           }
@@ -340,11 +386,52 @@ const FixtureDetail = () => {
             >
               {fixture.status === 'in_progress' ? 'In progress' : fixture.status}
             </span>
+            {fixture.forfeited ? (
+              <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">Forfeited</span>
+            ) : null}
             {canEdit && <button className="btn btn-success" onClick={saveFixture}>Save</button>}
             <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
         }
       />
+
+      {isAdmin && fixture?.season_status === 'active' && (
+        <Card>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-800">Forfeit</div>
+              <div className="text-sm text-gray-600">
+                Marks the fixture completed as {((fixture.match_type || 'league') === 'cup') ? '5-0' : '9-0'} to the selected team.
+                No lineups or individual games/sets are recorded.
+              </div>
+            </div>
+
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Winner</label>
+                <select
+                  className="input"
+                  value={forfeitWinner}
+                  onChange={(e) => setForfeitWinner(e.target.value)}
+                  disabled={!!fixture.forfeited}
+                >
+                  <option value="home">{fixture.home_team_name}</option>
+                  <option value="away">{fixture.away_team_name}</option>
+                </select>
+              </div>
+
+              <button
+                className="btn btn-danger"
+                type="button"
+                onClick={onForfeit}
+                disabled={!!fixture.forfeited}
+              >
+                Forfeit Match
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {renderLineupSelect('home', homeRoster, homeSelection, setHomeSelection)}
@@ -383,15 +470,15 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
   const slotSpec = useMemo(() => {
     const n = Number(game.game_number);
     const map = {
-      1: { home: ['H1'], away: ['A2'] },
-      2: { home: ['H2'], away: ['A3'] },
-      3: { home: ['H3'], away: ['A1'] },
+      1: { home: ['H3'], away: ['A2'] },
+      2: { home: ['H2'], away: ['A1'] },
+      3: { home: ['H1'], away: ['A3'] },
       4: { home: ['H1', 'H2'], away: ['A1', 'A2'] },
-      5: { home: ['H1', 'H3'], away: ['A1', 'A3'] },
-      6: { home: ['H2', 'H3'], away: ['A2', 'A3'] },
-      7: { home: ['H1'], away: ['A1'] },
-      8: { home: ['H2'], away: ['A2'] },
-      9: { home: ['H3'], away: ['A3'] },
+      5: { home: ['H2', 'H3'], away: ['A2', 'A3'] },
+      6: { home: ['H1', 'H3'], away: ['A1', 'A3'] },
+      7: { home: ['H2'], away: ['A2'] },
+      8: { home: ['H3'], away: ['A3'] },
+      9: { home: ['H1'], away: ['A1'] },
     };
     return map[n] || { home: [], away: [] };
   }, [game.game_number]);

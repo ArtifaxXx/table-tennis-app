@@ -33,6 +33,19 @@ class Database {
     }
   }
 
+  async ensureFixturesForfeitColumns() {
+    const columns = await this.all('PRAGMA table_info(fixtures)');
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('forfeited')) {
+      await this.run('ALTER TABLE fixtures ADD COLUMN forfeited INTEGER DEFAULT 0');
+      await this.run('UPDATE fixtures SET forfeited = 0 WHERE forfeited IS NULL', []);
+    }
+    if (!columnNames.has('forfeit_winner_team_id')) {
+      await this.run('ALTER TABLE fixtures ADD COLUMN forfeit_winner_team_id TEXT');
+    }
+  }
+
   async ensureDivisionCupMatchesDateColumn() {
     const columns = await this.all('PRAGMA table_info(division_cup_matches)');
     if (!columns || columns.length === 0) return;
@@ -351,6 +364,9 @@ class Database {
 
     // Ensure fixtures.match_type exists for older databases.
     await this.ensureFixturesMatchTypeColumn();
+
+    // Ensure fixtures forfeit columns exist for older databases.
+    await this.ensureFixturesForfeitColumns();
 
     // Ensure division_cup_matches.match_date exists for older databases.
     await this.ensureDivisionCupMatchesDateColumn();

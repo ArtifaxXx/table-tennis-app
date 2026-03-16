@@ -20,6 +20,7 @@ const Navbar = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [seedLoading, setSeedLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   const {
     divisions,
@@ -46,6 +47,22 @@ const Navbar = () => {
     } catch (e) {
       setRole('viewer');
       await auth.refreshRole();
+    }
+  };
+
+  const restorePremierSnapshot = async () => {
+    if (restoreLoading) return;
+    if (!window.confirm('Restore the Premier Division snapshot now? This will overwrite the current database.')) return;
+
+    setRestoreLoading(true);
+    try {
+      await axios.post('/api/admin/restore-prem-snapshot', {});
+      toast.success('Premier Division snapshot restored');
+      window.location.reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -307,9 +324,24 @@ const Navbar = () => {
                       className="btn btn-warning"
                       type="button"
                       onClick={seedData}
-                      disabled={authLoading || seedLoading}
+                      disabled={authLoading || seedLoading || restoreLoading}
                     >
                       {seedLoading ? 'Seeding...' : 'Seed Data'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 space-y-2">
+                  <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
+                  <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
+                  <div className="flex justify-end">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={restorePremierSnapshot}
+                      disabled={authLoading || seedLoading || restoreLoading}
+                    >
+                      {restoreLoading ? 'Restoring...' : 'Restore Premier Snapshot'}
                     </button>
                   </div>
                 </div>
