@@ -143,8 +143,17 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, asy
 
   isSeeding = true;
   try {
-    const snapshotDir = path.join(__dirname, '../data/seed-snapshots/prem-division');
-    const dataDir = path.join(__dirname, '../data');
+    const dbPath = db.dbPath || path.join(__dirname, '../data/league.db');
+    const dataDir = path.dirname(dbPath);
+    const candidateSnapshotDirs = [
+      process.env.PREM_SNAPSHOT_DIR ? path.resolve(process.env.PREM_SNAPSHOT_DIR) : null,
+      path.join(dataDir, 'seed-snapshots', 'prem-division'),
+      path.join(__dirname, '../data/seed-snapshots/prem-division'),
+      path.join(process.cwd(), 'data', 'seed-snapshots', 'prem-division'),
+    ].filter(Boolean);
+
+    const snapshotDir = candidateSnapshotDirs.find((dir) => fs.existsSync(path.join(dir, 'league.db')))
+      || candidateSnapshotDirs[0];
     const srcDb = path.join(snapshotDir, 'league.db');
     const srcWal = path.join(snapshotDir, 'league.db-wal');
     const srcShm = path.join(snapshotDir, 'league.db-shm');
@@ -153,7 +162,10 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, asy
     const destShm = path.join(dataDir, 'league.db-shm');
 
     if (!fs.existsSync(srcDb)) {
-      throw new Error('Premier Division snapshot not found. Run npm run save-prem-snapshot first.');
+      throw new Error(
+        `Premier Division snapshot not found. Looked in: ${candidateSnapshotDirs.join(', ')}. ` +
+          'Run npm run save-prem-snapshot or set PREM_SNAPSHOT_DIR.'
+      );
     }
 
     await db.close();

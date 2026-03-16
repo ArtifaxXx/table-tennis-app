@@ -316,33 +316,35 @@ const Navbar = () => {
                   </div>
                 </div>
 
-                <div className="border-t pt-4 space-y-2">
-                  <div className="text-sm font-semibold text-gray-800">Seed data</div>
-                  <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
-                  <div className="flex justify-end">
-                    <button
-                      className="btn btn-warning"
-                      type="button"
-                      onClick={seedData}
-                      disabled={authLoading || seedLoading || restoreLoading}
-                    >
-                      {seedLoading ? 'Seeding...' : 'Seed Data'}
-                    </button>
+                <div className="border-t pt-4 space-y-4">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Seed data</div>
+                    <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
+                    <div className="flex justify-end">
+                      <button
+                        className="btn btn-warning"
+                        type="button"
+                        onClick={seedData}
+                        disabled={authLoading || seedLoading || restoreLoading}
+                      >
+                        {seedLoading ? 'Seeding...' : 'Seed Data'}
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="border-t pt-4 space-y-2">
-                  <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
-                  <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
-                  <div className="flex justify-end">
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      onClick={restorePremierSnapshot}
-                      disabled={authLoading || seedLoading || restoreLoading}
-                    >
-                      {restoreLoading ? 'Restoring...' : 'Restore Premier Snapshot'}
-                    </button>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
+                    <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
+                    <div className="flex justify-end">
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={restorePremierSnapshot}
+                        disabled={authLoading || seedLoading || restoreLoading}
+                      >
+                        {restoreLoading ? 'Restoring...' : 'Restore Premier Snapshot'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

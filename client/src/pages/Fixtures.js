@@ -54,7 +54,18 @@ const Fixtures = () => {
     fetchFixtures(selectedSeasonId, selectedDivisionId);
   }, [fetchFixtures, selectedSeasonId, selectedDivisionId]);
 
-  const { items: sortedFixtures, requestSort, sortConfig } = useSortableData(fixtures, {
+  const normalizeTeamName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const fixturesWithSortKeys = React.useMemo(
+    () => fixtures.map((f) => ({
+      ...f,
+      home_sort: normalizeTeamName(f.home_team_name),
+      away_sort: normalizeTeamName(f.away_team_name),
+    })),
+    [fixtures]
+  );
+
+  const { items: sortedFixtures, requestSort, sortConfig } = useSortableData(fixturesWithSortKeys, {
     key: 'match_date',
     direction: 'asc',
   });
@@ -158,8 +169,8 @@ const Fixtures = () => {
               <tr>
                 <th className="cursor-pointer" onClick={() => requestSort('match_date')}>Date{sortIndicator(sortConfig, 'match_date')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('match_type')}>Type{sortIndicator(sortConfig, 'match_type')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('home_team_name', (f) => String(f?.home_team_name || '').trim().toLowerCase())}>Home{sortIndicator(sortConfig, 'home_team_name')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('away_team_name', (f) => String(f?.away_team_name || '').trim().toLowerCase())}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('home_sort')}>Home{sortIndicator(sortConfig, 'home_sort')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('away_sort')}>Away{sortIndicator(sortConfig, 'away_sort')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>VALIDATION{sortIndicator(sortConfig, 'completeness_status')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('home_games_won', (f) => (f.home_games_won || 0) - (f.away_games_won || 0))}>Result{sortIndicator(sortConfig, 'home_games_won')}</th>
