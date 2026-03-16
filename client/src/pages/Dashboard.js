@@ -331,9 +331,12 @@ const Dashboard = () => {
                   to="/player-rankings"
                   className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-7 text-sm font-semibold text-gray-600">#{player.rank || index + 1}</span>
-                    <span className="font-medium text-gray-800">{player.player_name}</span>
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 text-sm font-semibold text-gray-600">#{player.rank || index + 1}</span>
+                      <span className="font-medium text-gray-800">{player.player_name}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{player.team_name || 'Unassigned'}</div>
                   </div>
                   <div className="text-sm text-gray-700">{player.singles_wins} W</div>
                 </Link>
