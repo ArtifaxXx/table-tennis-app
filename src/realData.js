@@ -47,6 +47,33 @@ const TEAM_CONTACTS = {
   'Newcastle 2': { contact_name: 'Raffaele Cicchianni', contact_phone: '087 286 9665' },
 };
 
+const TEAM_CLUB_ADDRESSES = {
+  'Arklow 1': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Arklow Wrens': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Arklow Hawks': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Dublin Raptors': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Stingrays': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Panthers': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Tigers': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Greystones Cannons': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Greystones Magnums': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Greystones Glocks': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Roundwood 1': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood Foxes': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood Hares': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood 2': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Wayside 1': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 2': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 3': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 4': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 5': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wicklow 1': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Wicklow 2': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Wicklow 3': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Newcastle 1': 'Newcastle Parish Centre, Church Lane, Newcastle, Co Wicklow - A63 X782',
+  'Newcastle 2': 'Newcastle Parish Centre, Church Lane, Newcastle, Co Wicklow - A63 X782',
+};
+
 const REAL_TEAMS = [
   {
     division: 'Premier',
@@ -168,11 +195,12 @@ async function populateRealData(db, { seasonName = null } = {}) {
         if (!trimmedTeam) continue;
 
         const contact = TEAM_CONTACTS[trimmedTeam] || { contact_name: null, contact_phone: null };
+        const clubAddress = TEAM_CLUB_ADDRESSES[trimmedTeam] || null;
         const teamId = uuidv4();
         await db.run(
-          `INSERT INTO teams (id, name, contact_name, contact_phone, home_day, active)
-           VALUES (?, ?, ?, ?, NULL, 1)`,
-          [teamId, trimmedTeam, contact.contact_name, contact.contact_phone]
+          `INSERT INTO teams (id, name, contact_name, contact_phone, club_address, home_day, active)
+           VALUES (?, ?, ?, ?, ?, NULL, 1)`,
+          [teamId, trimmedTeam, contact.contact_name, contact.contact_phone, clubAddress]
         );
         teamIdByName.set(trimmedTeam, teamId);
 

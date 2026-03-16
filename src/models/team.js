@@ -15,7 +15,7 @@ class TeamManager {
   }
 
   async createTeam(teamData) {
-    const { name, contact_name, contact_phone, home_day } = teamData;
+    const { name, contact_name, contact_phone, home_day, club_address } = teamData;
 
     if (!name) {
       throw new Error('Team name is required');
@@ -23,8 +23,15 @@ class TeamManager {
 
     const id = uuidv4();
     await this.db.run(
-      'INSERT INTO teams (id, name, contact_name, contact_phone, home_day) VALUES (?, ?, ?, ?, ?)',
-      [id, name, contact_name || null, contact_phone || null, this.normalizeHomeDay(home_day)]
+      'INSERT INTO teams (id, name, contact_name, contact_phone, home_day, club_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        id,
+        name,
+        contact_name || null,
+        contact_phone || null,
+        this.normalizeHomeDay(home_day),
+        club_address || null,
+      ]
     );
 
     return this.getTeamById(id);
@@ -58,7 +65,7 @@ class TeamManager {
   }
 
   async updateTeam(id, teamData) {
-    const { name, contact_name, contact_phone, home_day } = teamData;
+    const { name, contact_name, contact_phone, home_day, club_address } = teamData;
 
     const normalizedHomeDay = home_day === undefined ? undefined : this.normalizeHomeDay(home_day);
 
@@ -69,6 +76,7 @@ class TeamManager {
        SET name = COALESCE(?, name),
            contact_name = COALESCE(?, contact_name),
            contact_phone = COALESCE(?, contact_phone),
+           club_address = COALESCE(?, club_address),
            home_day = CASE WHEN ? = 1 THEN ? ELSE home_day END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND active = 1`,
@@ -76,6 +84,7 @@ class TeamManager {
         name,
         contact_name,
         contact_phone,
+        club_address,
         shouldUpdateHomeDay ? 1 : 0,
         shouldUpdateHomeDay ? normalizedHomeDay : null,
         id,

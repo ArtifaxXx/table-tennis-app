@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useAuth } from '../context/AuthContext';
@@ -57,7 +57,6 @@ const Players = () => {
   };
 
   const handleEdit = (player) => {
-    if (!isAdmin) return;
     setEditingPlayer(player);
     setFormData({
       name: player.name,
@@ -115,10 +114,10 @@ const Players = () => {
         }
       />
 
-      {isAdmin && showAddForm && (
+      {showAddForm && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            {editingPlayer ? 'Edit Player' : 'Add New Player'}
+            {isAdmin ? (editingPlayer ? 'Edit Player' : 'Add New Player') : 'Player Details'}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -132,15 +131,18 @@ const Players = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   className="input"
+                  disabled={!isAdmin}
                 />
               </div>
             </div>
             <div className="flex space-x-3">
-              <button type="submit" className="btn btn-success">
-                {editingPlayer ? 'Update' : 'Add'} Player
-              </button>
+              {isAdmin && (
+                <button type="submit" className="btn btn-success">
+                  {editingPlayer ? 'Update' : 'Add'} Player
+                </button>
+              )}
               <button type="button" onClick={resetForm} className="btn btn-secondary">
-                Cancel
+                {isAdmin ? 'Cancel' : 'Close'}
               </button>
             </div>
           </form>
@@ -199,7 +201,11 @@ const Players = () => {
             </thead>
             <tbody>
               {sortedPlayers.map((player) => (
-                <tr key={player.id}>
+                <tr
+                  key={player.id}
+                  className={isAdmin ? 'cursor-pointer' : undefined}
+                  onClick={() => handleEdit(player)}
+                >
                   <td className="font-medium">{player.name}</td>
                   <td>{player.total_matches || 0}</td>
                   <td className="font-medium">
@@ -224,16 +230,13 @@ const Players = () => {
                     {isAdmin && (
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => handleEdit(player)}
-                          className="text-blue-600 hover:text-blue-800"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(player.id);
+                          }}
+                          className="btn btn-danger"
                         >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(player.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={16} />
+                          Delete
                         </button>
                       </div>
                     )}

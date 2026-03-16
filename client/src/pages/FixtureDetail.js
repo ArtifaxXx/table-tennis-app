@@ -467,6 +467,16 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
     if (cupStopGameIndex == null) return false;
     return (game.game_number - 1) > cupStopGameIndex;
   };
+  const parsePoints = (value) => {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+  const autoOpponentScore = (value) => {
+    if (value < 10) return 11;
+    if (value === 10) return 12;
+    if (value > 11) return Math.max(value - 2, 0);
+    return 9;
+  };
   const slotSpec = useMemo(() => {
     const n = Number(game.game_number);
     const map = {
@@ -565,7 +575,18 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
                 disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
                 onChange={(e) => {
                   const next = [...sets];
-                  next[idx] = { ...next[idx], home_points: parseInt(e.target.value || '0', 10) };
+                  const nextValue = parsePoints(e.target.value || '0');
+                  const previousHome = parsePoints(next[idx]?.home_points ?? 0);
+                  const currentAway = parsePoints(next[idx]?.away_points ?? 0);
+                  const shouldAutoFill = currentAway === 0 || currentAway === autoOpponentScore(previousHome);
+                  const nextAway = shouldAutoFill && nextValue > 0
+                    ? autoOpponentScore(nextValue)
+                    : currentAway;
+                  next[idx] = {
+                    ...next[idx],
+                    home_points: nextValue,
+                    away_points: nextAway,
+                  };
                   onChangeSets(next);
                 }}
               />
@@ -577,7 +598,18 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
                 disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
                 onChange={(e) => {
                   const next = [...sets];
-                  next[idx] = { ...next[idx], away_points: parseInt(e.target.value || '0', 10) };
+                  const nextValue = parsePoints(e.target.value || '0');
+                  const previousAway = parsePoints(next[idx]?.away_points ?? 0);
+                  const currentHome = parsePoints(next[idx]?.home_points ?? 0);
+                  const shouldAutoFill = currentHome === 0 || currentHome === autoOpponentScore(previousAway);
+                  const nextHome = shouldAutoFill && nextValue > 0
+                    ? autoOpponentScore(nextValue)
+                    : currentHome;
+                  next[idx] = {
+                    ...next[idx],
+                    away_points: nextValue,
+                    home_points: nextHome,
+                  };
                   onChangeSets(next);
                 }}
               />

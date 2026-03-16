@@ -36,7 +36,7 @@ function App() {
                 <Route path="/seasons" element={<Seasons />} />
               </Routes>
             </main>
-            <footer className="container mx-auto px-4 pb-6 text-xs text-gray-500">
+            <footer className="fixed bottom-4 left-4 z-40 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
               Created by Alexey Reutov
             </footer>
             <ToastViewport />

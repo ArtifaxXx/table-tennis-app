@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import { Plus } from 'lucide-react';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +27,7 @@ const Seasons = () => {
   const [seasons, setSeasons] = useState([]);
   const [activeSeason, setActiveSeason] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showSeasonForm, setShowSeasonForm] = useState(false);
   const [creatingName, setCreatingName] = useState('');
   const [creatingScheduleStart, setCreatingScheduleStart] = useState('');
   const [creatingScheduleEnd, setCreatingScheduleEnd] = useState('');
@@ -224,6 +226,7 @@ const Seasons = () => {
       setCreatingScheduleStart('');
       setCreatingScheduleEnd('');
       setCopyFromSeasonId('');
+      setShowSeasonForm(false);
       await fetchData();
       await refreshSeasons();
       if (created?.data?.id) {
@@ -332,45 +335,74 @@ const Seasons = () => {
       <PageHeader
         title="Seasons"
         right={
-          <div className="text-sm text-gray-600">
-            Active: <span className="font-medium">{activeSeason?.name || 'None'}</span>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-600">
+              Active: <span className="font-medium">{activeSeason?.name || 'None'}</span>
+            </div>
+            {isAdmin ? (
+              <button
+                type="button"
+                className="btn btn-primary flex items-center gap-2"
+                onClick={() => setShowSeasonForm(true)}
+              >
+                <Plus size={18} />
+                Add Season
+              </button>
+            ) : null}
           </div>
         }
       />
 
-      {isAdmin && (
+      {isAdmin && showSeasonForm && (
         <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Create Season</h3>
-          <form onSubmit={createSeason} className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <input
-              className="input"
-              value={creatingName}
-              onChange={(e) => setCreatingName(e.target.value)}
-              placeholder="Season name"
-            />
-            <input
-              className="input"
-              type="date"
-              value={creatingScheduleStart}
-              onChange={(e) => setCreatingScheduleStart(e.target.value)}
-            />
-            <input
-              className="input"
-              type="date"
-              value={creatingScheduleEnd}
-              onChange={(e) => setCreatingScheduleEnd(e.target.value)}
-            />
-            <select className="input" value={copyFromSeasonId} onChange={(e) => setCopyFromSeasonId(e.target.value)}>
-              <option value="">(Optional) Copy divisions + teams from season</option>
-              {seasons
-                .filter((s) => s.id !== activeSeason?.id)
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-            </select>
-            <button className="btn btn-success" type="submit">Create</button>
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Add New Season</h3>
+          <form onSubmit={createSeason} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <input
+                className="input"
+                value={creatingName}
+                onChange={(e) => setCreatingName(e.target.value)}
+                placeholder="Season name"
+              />
+              <input
+                className="input"
+                type="date"
+                value={creatingScheduleStart}
+                onChange={(e) => setCreatingScheduleStart(e.target.value)}
+              />
+              <input
+                className="input"
+                type="date"
+                value={creatingScheduleEnd}
+                onChange={(e) => setCreatingScheduleEnd(e.target.value)}
+              />
+              <select className="input" value={copyFromSeasonId} onChange={(e) => setCopyFromSeasonId(e.target.value)}>
+                <option value="">(Optional) Copy divisions + teams from season</option>
+                {seasons
+                  .filter((s) => s.id !== activeSeason?.id)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-success" type="submit">Create</button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  setCreatingName('');
+                  setCreatingScheduleStart('');
+                  setCreatingScheduleEnd('');
+                  setCopyFromSeasonId('');
+                  setShowSeasonForm(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </Card>
       )}

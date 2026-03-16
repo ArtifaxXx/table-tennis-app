@@ -3,6 +3,40 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
+const TEAM_CLUB_ADDRESSES = {
+  'Arklow': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Arklow 1': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Arklow Wrens': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Arklow Hawks': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
+  'Dublin': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Raptors': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Stingrays': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Panthers': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Dublin Tigers': 'Wesley College (Indoors Sports Center), Balinteer Road, Sandyford - D16 NX73',
+  'Greystones Cannons': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Greystones Magnums': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Greystones Glocks': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Greystones': 'Greystones Lawn Tennis Club, Mill Rd - A63 RP29',
+  'Roundwood': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood 1': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood Foxes': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood Hares': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Roundwood 2': 'Roundwood Parish Hall, Main Street - A98 K7K6',
+  'Wayside 1': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 2': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 3': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 4': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside 5': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wayside': 'Wayside Celtic Football Club, 31 Glenamuck Rd, Glenamuck South, Dublin - D18 RC03',
+  'Wicklow': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Wicklow 1': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Wicklow 2': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Wicklow 3': 'Wicklow Methodist Church, Convent Road - A67 WK11',
+  'Newcastle': 'Newcastle Parish Centre, Church Lane, Newcastle, Co Wicklow - A63 X782',
+  'Newcastle 1': 'Newcastle Parish Centre, Church Lane, Newcastle, Co Wicklow - A63 X782',
+  'Newcastle 2': 'Newcastle Parish Centre, Church Lane, Newcastle, Co Wicklow - A63 X782',
+};
+
 class Database {
   constructor() {
     this.db = null;
@@ -175,6 +209,7 @@ class Database {
         name TEXT NOT NULL UNIQUE,
         contact_name TEXT,
         contact_phone TEXT,
+        club_address TEXT,
         home_day INTEGER,
         active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -356,6 +391,10 @@ class Database {
     // Ensure teams.home_day exists for older databases.
     await this.ensureTeamsHomeDayColumn();
 
+    // Ensure teams.club_address exists and backfill known club addresses.
+    await this.ensureTeamsClubAddressColumn();
+    await this.ensureTeamsClubAddressBackfill();
+
     // Ensure fixtures.team_season_id exists for older databases.
     await this.ensureFixturesSeasonColumn();
 
@@ -433,6 +472,41 @@ class Database {
     }
     if (!columnNames.has('contact_phone')) {
       await this.run('ALTER TABLE teams ADD COLUMN contact_phone TEXT');
+    }
+  }
+
+  async ensureTeamsClubAddressColumn() {
+    const columns = await this.all('PRAGMA table_info(teams)');
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('club_address')) {
+      await this.run('ALTER TABLE teams ADD COLUMN club_address TEXT');
+    }
+  }
+
+  async ensureTeamsClubAddressBackfill() {
+    const entries = Object.entries(TEAM_CLUB_ADDRESSES);
+    if (entries.length === 0) return;
+
+    await this.run('BEGIN TRANSACTION');
+    try {
+      for (const [name, address] of entries) {
+        await this.run(
+          `UPDATE teams
+           SET club_address = ?
+           WHERE LOWER(name) = LOWER(?)
+             AND (club_address IS NULL OR club_address = '')`,
+          [address, name]
+        );
+      }
+      await this.run('COMMIT');
+    } catch (e) {
+      try {
+        await this.run('ROLLBACK');
+      } catch (rollbackError) {
+        // ignore
+      }
+      throw e;
     }
   }
 

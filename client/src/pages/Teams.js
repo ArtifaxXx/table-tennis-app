@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import { Plus, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Card from '../components/Card';
@@ -114,14 +115,13 @@ const Teams = () => {
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [creatingName, setCreatingName] = useState('');
-  const [creatingContactName, setCreatingContactName] = useState('');
-  const [creatingContactPhone, setCreatingContactPhone] = useState('');
-  const [creatingHomeDay, setCreatingHomeDay] = useState('');
+  const [showTeamForm, setShowTeamForm] = useState(false);
+  const [teamSearchTerm, setTeamSearchTerm] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [teamName, setTeamName] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [clubAddress, setClubAddress] = useState('');
   const [homeDay, setHomeDay] = useState('');
   const [mainIds, setMainIds] = useState(['', '', '']);
   const SUB_COUNT = 10;
@@ -133,6 +133,12 @@ const Teams = () => {
     () => teams.find((t) => t.id === selectedTeamId) || null,
     [teams, selectedTeamId]
   );
+
+  const filteredTeams = useMemo(() => {
+    const term = String(teamSearchTerm || '').trim().toLowerCase();
+    if (!term) return teams;
+    return teams.filter((t) => String(t.name || '').toLowerCase().includes(term));
+  }, [teams, teamSearchTerm]);
 
   const playerOptions = useMemo(
     () => players.map((p) => ({ value: p.id, label: p.name })),
@@ -164,23 +170,6 @@ const Teams = () => {
     return () => window.removeEventListener('focus', onFocus);
   }, [fetchData]);
 
-  const onSaveContact = async () => {
-    if (!isAdmin) return;
-    if (!selectedTeamId) return;
-    try {
-      await axios.put(`/api/teams/${selectedTeamId}`, {
-        contact_name: contactName,
-        contact_phone: contactPhone,
-        home_day: homeDay === '' ? null : Number(homeDay),
-      });
-      await fetchData();
-      toast.success('Save successful');
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || e.message);
-    }
-  };
-
   const homeDayLabel = (value) => {
     const v = value == null ? '' : String(value);
     const map = {
@@ -193,24 +182,73 @@ const Teams = () => {
     return map[v] || '-';
   };
 
-  const onSaveTeamName = async () => {
+  const resetTeamForm = () => {
+    setSelectedTeamId('');
+    setTeamName('');
+    setContactName('');
+    setContactPhone('');
+    setClubAddress('');
+    setHomeDay('');
+    setMainIds(['', '', '']);
+    setSubIds(Array(SUB_COUNT).fill(''));
+  };
+
+  const saveRoster = async (teamId) => {
+    if (!teamId) return;
+    if (mainIds.some((x) => !x)) {
+      throw new Error('Main roster must have 3 players');
+    }
+
+    const mains = [...mainIds];
+    const subs = subIds.filter((x) => x);
+
+    await axios.put(`/api/teams/${teamId}/roster`, {
+      main: mains,
+      subs,
+    });
+  };
+
+  const openCreateTeam = () => {
+    resetTeamForm();
+    setShowTeamForm(true);
+  };
+
+  const handleSaveTeam = async (e) => {
+    e.preventDefault();
     if (!isAdmin) return;
-    if (!selectedTeamId) return;
     if (!teamName.trim()) {
       toast.error('Team name is required');
       return;
     }
 
     try {
-      await axios.put(`/api/teams/${selectedTeamId}`, {
-        name: teamName.trim(),
-        home_day: homeDay === '' ? null : Number(homeDay),
-      });
+      if (selectedTeamId) {
+        await axios.put(`/api/teams/${selectedTeamId}`, {
+          name: teamName.trim(),
+          contact_name: contactName,
+          contact_phone: contactPhone,
+          club_address: clubAddress,
+          home_day: homeDay === '' ? null : Number(homeDay),
+        });
+        await saveRoster(selectedTeamId);
+      } else {
+        await axios.post('/api/teams', {
+          name: teamName.trim(),
+          contact_name: contactName,
+          contact_phone: contactPhone,
+          club_address: clubAddress,
+          home_day: homeDay === '' ? null : Number(homeDay),
+        });
+      }
       await fetchData();
       toast.success('Save successful');
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || e.message);
+      if (!selectedTeamId) {
+        resetTeamForm();
+        setShowTeamForm(false);
+      }
+    } catch (e2) {
+      console.error(e2);
+      toast.error(e2?.response?.data?.error || e2.message);
     }
   };
 
@@ -223,32 +261,11 @@ const Teams = () => {
     try {
       await axios.delete(`/api/teams/${team.id}`);
       if (selectedTeamId === team.id) {
-        setSelectedTeamId('');
+        resetTeamForm();
+        setShowTeamForm(false);
       }
       await fetchData();
       toast.success('Delete successful');
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || e.message);
-    }
-  };
-
-  const onCreateTeam = async (e) => {
-    e.preventDefault();
-    if (!isAdmin) return;
-    try {
-      await axios.post('/api/teams', {
-        name: creatingName,
-        contact_name: creatingContactName,
-        contact_phone: creatingContactPhone,
-        home_day: creatingHomeDay === '' ? null : Number(creatingHomeDay),
-      });
-      setCreatingName('');
-      setCreatingContactName('');
-      setCreatingContactPhone('');
-      setCreatingHomeDay('');
-      await fetchData();
-      toast.success('Save successful');
     } catch (e) {
       console.error(e);
       toast.error(e?.response?.data?.error || e.message);
@@ -260,6 +277,7 @@ const Teams = () => {
     setTeamName(team.name || '');
     setContactName(team.contact_name || '');
     setContactPhone(team.contact_phone || '');
+    setClubAddress(team.club_address || '');
     setHomeDay(team.home_day == null ? '' : String(team.home_day));
     const mains = team.roster.filter((r) => r.slot >= 1 && r.slot <= 3).sort((a, b) => a.slot - b.slot);
     const subs = team.roster.filter((r) => r.slot >= 4 && r.slot <= 13).sort((a, b) => a.slot - b.slot);
@@ -275,178 +293,74 @@ const Teams = () => {
     setSelectedTeamId(id);
     const team = teams.find((t) => t.id === id);
     loadRosterIntoForm(team);
-  };
-
-  const onSaveRoster = async () => {
-    if (!isAdmin) return;
-    if (!selectedTeamId) return;
-    if (mainIds.some((x) => !x)) {
-      toast.error('Main roster must have 3 players');
-      return;
-    }
-
-    const mains = [...mainIds];
-    const subs = subIds.filter((x) => x);
-
-    try {
-      await axios.put(`/api/teams/${selectedTeamId}/roster`, {
-        main: mains,
-        subs,
-      });
-      await fetchData();
-      toast.success('Save successful');
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.error || e.message);
-    }
+    setShowTeamForm(true);
   };
 
   if (loading) return <div className="text-center py-8">Loading teams...</div>;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Teams" />
+      <PageHeader
+        title="Teams"
+        right={isAdmin ? (
+          <button
+            type="button"
+            className="btn btn-primary flex items-center gap-2"
+            onClick={openCreateTeam}
+          >
+            <Plus size={18} />
+            Add Team
+          </button>
+        ) : null}
+      />
 
-      {isAdmin && (
+      {showTeamForm && (
         <Card>
-          <form onSubmit={onCreateTeam} className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-800">Create Team</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input
-              className="input"
-              value={creatingName}
-              onChange={(e) => setCreatingName(e.target.value)}
-              placeholder="Team name"
-            />
-            <input
-              className="input"
-              value={creatingContactName}
-              onChange={(e) => setCreatingContactName(e.target.value)}
-              placeholder="Contact name"
-            />
-            <input
-              className="input"
-              value={creatingContactPhone}
-              onChange={(e) => setCreatingContactPhone(e.target.value)}
-              placeholder="Contact phone"
-            />
-            <select className="input" value={creatingHomeDay} onChange={(e) => setCreatingHomeDay(e.target.value)}>
-              <option value="">Home day (optional)</option>
-              <option value="1">Monday</option>
-              <option value="2">Tuesday</option>
-              <option value="3">Wednesday</option>
-              <option value="4">Thursday</option>
-              <option value="5">Friday</option>
-            </select>
-          </div>
-          <button className="btn btn-success" type="submit">Create</button>
-          </form>
-        </Card>
-      )}
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">
+            {isAdmin ? (selectedTeamId ? 'Edit Team' : 'Add New Team') : 'Team Details'}
+          </h3>
+          <form onSubmit={handleSaveTeam} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                className="input"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="Team name"
+                disabled={!isAdmin}
+              />
+              <input
+                className="input md:col-span-2"
+                value={clubAddress}
+                onChange={(e) => setClubAddress(e.target.value)}
+                placeholder="Club address"
+                disabled={!isAdmin}
+              />
+              <input
+                className="input"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Contact name"
+                disabled={!isAdmin}
+              />
+              <input
+                className="input"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="Contact phone"
+                disabled={!isAdmin}
+              />
+              <select className="input" value={homeDay} onChange={(e) => setHomeDay(e.target.value)} disabled={!isAdmin}>
+                <option value="">Home day</option>
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+                <option value="5">Friday</option>
+              </select>
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">All Teams</h3>
-          <div className="space-y-2">
-            {teams.map((t) => (
-              <div
-                key={t.id}
-                className={`w-full px-4 py-2 rounded border ${selectedTeamId === t.id ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}
-              >
-                <div className="flex justify-between items-center">
-                  <button className="text-left flex-1" onClick={() => onSelectTeam(t.id)}>
-                    <div className="flex justify-between">
-                      <span className="font-medium text-gray-800">{t.name}</span>
-                      <span className="text-sm text-gray-500">Roster: {t.roster?.length || 0}</span>
-                    </div>
-                    {(t.contact_name || t.contact_phone) && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {t.contact_name ? t.contact_name : ''}{t.contact_name && t.contact_phone ? ' · ' : ''}{t.contact_phone ? t.contact_phone : ''}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500 mt-1">Home day: {homeDayLabel(t.home_day)}</div>
-                  </button>
-                  {isAdmin && (
-                    <button className="btn btn-danger ml-3" onClick={() => onDeleteTeam(t)}>
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {teams.length === 0 && <div className="text-gray-500">No teams yet</div>}
-          </div>
-        </Card>
-
-        <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Roster</h3>
-          {!selectedTeam && <div className="text-gray-500">Select a team to edit roster.</div>}
-          {selectedTeam && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold text-gray-800">{selectedTeam.name}</div>
-                <button className="btn btn-danger" onClick={() => onDeleteTeam(selectedTeam)}>
-                  Delete Team
-                </button>
-              </div>
-
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Team Name</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    className="input"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    disabled={!isAdmin}
-                  />
-                </div>
-                {isAdmin && (
-                  <button className="btn btn-success mt-3" onClick={onSaveTeamName}>
-                    Save Team Name
-                  </button>
-                )}
-              </div>
-
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Team Contact</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Contact name</label>
-                    <input
-                      className="input"
-                      value={contactName}
-                      onChange={(e) => setContactName(e.target.value)}
-                      disabled={!isAdmin}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Contact phone</label>
-                    <input
-                      className="input"
-                      value={contactPhone}
-                      onChange={(e) => setContactPhone(e.target.value)}
-                      disabled={!isAdmin}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Home day (optional)</label>
-                    <select className="input" value={homeDay} onChange={(e) => setHomeDay(e.target.value)} disabled={!isAdmin}>
-                      <option value="">None</option>
-                      <option value="1">Monday</option>
-                      <option value="2">Tuesday</option>
-                      <option value="3">Wednesday</option>
-                      <option value="4">Thursday</option>
-                      <option value="5">Friday</option>
-                    </select>
-                  </div>
-                </div>
-                {isAdmin && (
-                  <button className="btn btn-success mt-3" onClick={onSaveContact}>
-                    Save Contact / Home Day
-                  </button>
-                )}
-              </div>
-
+            {selectedTeamId ? (
+              <div className="space-y-4">
               <div>
                 <div className="font-medium text-gray-700 mb-2">Main (3 players)</div>
                 <div className="text-xs text-gray-500 mb-2">
@@ -493,15 +407,79 @@ const Teams = () => {
                 </div>
               </div>
 
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">
+                Save the team first to manage its roster.
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
               {isAdmin && (
-                <button className="btn btn-success" onClick={onSaveRoster}>
-                  Save Roster
+                <button className="btn btn-success" type="submit">
+                  {selectedTeamId ? 'Save Team' : 'Create Team'}
                 </button>
               )}
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  resetTeamForm();
+                  setShowTeamForm(false);
+                }}
+              >
+                {isAdmin ? 'Cancel' : 'Close'}
+              </button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <Search size={18} className="text-gray-400" />
+          <input
+            className="input flex-1"
+            value={teamSearchTerm}
+            onChange={(e) => setTeamSearchTerm(e.target.value)}
+            placeholder="Search teams..."
+          />
+        </div>
+        <div className="space-y-2">
+          {filteredTeams.map((t) => (
+            <div
+              key={t.id}
+              className={`w-full px-4 py-2 rounded border ${selectedTeamId === t.id ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}
+            >
+              <div className="flex justify-between items-center">
+                <button className="text-left flex-1" onClick={() => onSelectTeam(t.id)}>
+                  <div className="font-medium text-gray-800">{t.name}</div>
+                  {(t.contact_name || t.contact_phone) && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {t.contact_name ? t.contact_name : ''}{t.contact_name && t.contact_phone ? ' · ' : ''}{t.contact_phone ? t.contact_phone : ''}
+                    </div>
+                  )}
+                  {t.club_address && (
+                    <div className="text-xs text-gray-500 mt-1">Club: {t.club_address}</div>
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">Roster: {t.roster?.length || 0}</div>
+                  <div className="text-xs text-gray-500 mt-1">Home day: {homeDayLabel(t.home_day)}</div>
+                </button>
+                {isAdmin && (
+                  <button className="btn btn-danger ml-3" onClick={() => onDeleteTeam(t)}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {filteredTeams.length === 0 && (
+            <div className="text-gray-500 text-center py-6">
+              {teamSearchTerm ? 'No teams found' : 'No teams yet'}
             </div>
           )}
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 };
