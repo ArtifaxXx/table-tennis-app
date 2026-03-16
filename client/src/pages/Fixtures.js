@@ -23,11 +23,18 @@ const Fixtures = () => {
   const calendarInitRef = useRef(false);
   const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
 
-  const toDateTimeLocalValue = (iso) => {
+  const toDateLocalValue = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  const toDateIsoValue = (dateLocal) => {
+    if (!dateLocal) return null;
+    const [year, month, day] = dateLocal.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day, 12, 0, 0).toISOString();
   };
 
   const fetchFixtures = useCallback(async (seasonId, divisionId) => {
@@ -36,7 +43,7 @@ const Fixtures = () => {
       setFixtures(res.data);
       const nextEdited = {};
       for (const f of res.data || []) {
-        nextEdited[f.id] = toDateTimeLocalValue(f.match_date);
+        nextEdited[f.id] = toDateLocalValue(f.match_date);
       }
       setEditedDatesByFixtureId(nextEdited);
     } catch (e) {
@@ -73,13 +80,6 @@ const Fixtures = () => {
 
   const pad2 = (n) => String(n).padStart(2, '0');
   const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  const toTimeLabel = (iso) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  };
-
   const normalizeTeamName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   const teamOptions = React.useMemo(() => {
@@ -136,12 +136,12 @@ const Fixtures = () => {
     direction: 'asc',
   });
 
-  const updateFixtureDate = async (fixtureId, dateTimeLocal) => {
-    const asIso = dateTimeLocal ? new Date(dateTimeLocal).toISOString() : null;
+  const updateFixtureDate = async (fixtureId, dateLocal) => {
+    const asIso = toDateIsoValue(dateLocal);
     try {
       const res = await axios.put(`/api/fixtures/${fixtureId}`, { match_date: asIso });
       setFixtures((prev) => prev.map((f) => (f.id === fixtureId ? res.data : f)));
-      setEditedDatesByFixtureId((prev) => ({ ...prev, [fixtureId]: toDateTimeLocalValue(res.data.match_date) }));
+      setEditedDatesByFixtureId((prev) => ({ ...prev, [fixtureId]: toDateLocalValue(res.data.match_date) }));
       toast.success('Save successful');
     } catch (e) {
       console.error(e);
@@ -309,15 +309,15 @@ const Fixtures = () => {
                       <div className="flex items-center gap-2">
                         <input
                           className="input"
-                          type="datetime-local"
-                          value={editedDatesByFixtureId[f.id] ?? toDateTimeLocalValue(f.match_date)}
+                          type="date"
+                          value={editedDatesByFixtureId[f.id] ?? toDateLocalValue(f.match_date)}
                           onChange={(e) => {
                             const v = e.target.value;
                             setEditedDatesByFixtureId((prev) => ({ ...prev, [f.id]: v }));
                           }}
                           disabled={!canEdit}
                         />
-                        {canEdit && (editedDatesByFixtureId[f.id] ?? toDateTimeLocalValue(f.match_date)) !== toDateTimeLocalValue(f.match_date) && (
+                        {canEdit && (editedDatesByFixtureId[f.id] ?? toDateLocalValue(f.match_date)) !== toDateLocalValue(f.match_date) && (
                           <button
                             className="btn btn-success"
                             type="button"
@@ -407,7 +407,6 @@ const Fixtures = () => {
                         >
                           <div className="flex items-center gap-2 text-[10px] uppercase text-gray-500">
                             {statusDot(fixture.status)}
-                            <span className="font-semibold text-gray-700 normal-case">{toTimeLabel(fixture.match_date) || 'TBD'}</span>
                             <span>{(fixture.match_type || 'league') === 'cup' ? 'Cup' : 'League'}</span>
                           </div>
                           <div className="truncate">{fixture.home_team_name} vs {fixture.away_team_name}</div>

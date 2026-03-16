@@ -291,7 +291,7 @@ const Navbar = () => {
                     <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
                     <div className="flex justify-end">
                       <button
-                        className="btn btn-warning"
+                        className="btn btn-primary"
                         type="button"
                         onClick={seedData}
                         disabled={authLoading || seedLoading || restoreLoading}
@@ -378,8 +378,27 @@ const Navbar = () => {
                 To get admin rights click profile icon at the top right and put in <span className="font-semibold">"555"</span> as password.
               </div>
               <div>
-                To get some data enter admin mode and click on <span className="font-semibold">"Seed Data"</span>. Wait till it finishes (40 sec) and reload the page.
+                To get some generated data enter admin mode and click on <span className="font-semibold">"Seed Data"</span>. Wait till it finishes (40 sec) and reload the page.
               </div>
+              <div>
+                To get more real data with current Prem division state - click <span className="font-semibold">"Restore Premiere snapshot"</span>
+              </div>
+              <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-gray-800">Implemented features</summary>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                  <li>Dashboard metrics, upcoming fixtures, recent results, and top team/player highlights.</li>
+                  <li>Teams management with contact/home-day details, club addresses, roster slots, search, and admin-only edits.</li>
+                  <li>Players management with search, admin-only edits, and read-only detail views for viewers.</li>
+                  <li>Season fixtures list with sorting, team filter, and calendar/unscheduled views.</li>
+                  <li>Fixture detail editing: lineups, sets, auto-filled opposing scores, and completeness validation badges.</li>
+                  <li>Fixture forfeits with automatic score handling (admin-only).</li>
+                  <li>Season/division filters across standings, rankings, fixtures, and cup views.</li>
+                  <li>Live standings and player rankings by season/division.</li>
+                  <li>Cup bracket + list views with round navigation and match summaries.</li>
+                  <li>Season + division management, including team assignment, fixture generation preview, and schedule creation.</li>
+                  <li>Admin tools for seeding demo data and restoring the Premier Division snapshot.</li>
+                </ul>
+              </details>
             </div>
 
             <div className="mt-6 flex justify-end">

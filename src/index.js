@@ -752,7 +752,8 @@ app.get('/api/player-rankings', async (req, res) => {
 app.get('/api/dashboard', async (req, res) => {
   try {
     const explicitSeasonId = req.query && req.query.seasonId ? req.query.seasonId : null;
-    const explicitDivisionId = req.query && req.query.divisionId ? req.query.divisionId : null;
+    const rawDivisionId = req.query && req.query.divisionId ? req.query.divisionId : null;
+    const explicitDivisionId = rawDivisionId === 'all' ? null : rawDivisionId;
     let season = null;
 
     if (!explicitSeasonId && explicitDivisionId) {
@@ -771,7 +772,9 @@ app.get('/api/dashboard', async (req, res) => {
       }
     }
 
-    const divisionId = explicitDivisionId || (season ? await resolveDivisionId(req, season.id) : null);
+    const divisionId = rawDivisionId === 'all'
+      ? null
+      : (explicitDivisionId || (season ? await resolveDivisionId(req, season.id) : null));
 
     const division = divisionId ? await teamSeasonDivisionManager.getDivisionById(divisionId) : null;
 

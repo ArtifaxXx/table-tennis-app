@@ -366,7 +366,7 @@ const FixtureDetail = () => {
               {fixture.home_team_name} vs {fixture.away_team_name}
             </div>
             <div className="text-sm text-gray-500">
-              {fixture.match_date ? new Date(fixture.match_date).toLocaleString() : 'No date'}
+              {fixture.match_date ? new Date(fixture.match_date).toLocaleDateString() : 'No date'}
             </div>
           </>
         }
