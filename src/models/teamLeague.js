@@ -401,6 +401,17 @@ class TeamLeagueManager {
     }
     where.push("(f.match_type IS NULL OR f.match_type = 'league')");
     const filterSql = where.length > 0 ? `AND ${where.join(' AND ')}` : '';
+    const teamJoin = teamSeasonId || divisionId ? 'JOIN team_season_division_teams dt ON dt.team_id = tr.team_id' : '';
+    const teamWhere = ['tr.active = 1'];
+    const teamParams = [];
+    if (teamSeasonId) {
+      teamWhere.push('dt.team_season_id = ?');
+      teamParams.push(teamSeasonId);
+    }
+    if (divisionId) {
+      teamWhere.push('dt.division_id = ?');
+      teamParams.push(divisionId);
+    }
     const params = [
       ...baseParams, // w
       ...baseParams, // l
@@ -414,6 +425,7 @@ class TeamLeagueManager {
        SELECT
          p.id as player_id,
          p.name as player_name,
+         tm.team_name as team_name,
          COALESCE(w.wins, 0) as singles_wins,
          COALESCE(l.losses, 0) as singles_losses,
          COALESCE(w.wins, 0) + COALESCE(l.losses, 0) as singles_played,
@@ -432,6 +444,14 @@ class TeamLeagueManager {
          ) as doubles_win_pct
        FROM base_players bp
        JOIN players p ON p.id = bp.player_id
+       LEFT JOIN (
+         SELECT tr.player_id, MIN(t.name) as team_name
+         FROM team_roster tr
+         JOIN teams t ON t.id = tr.team_id
+         ${teamJoin}
+         WHERE ${teamWhere.join(' AND ')}
+         GROUP BY tr.player_id
+       ) tm ON tm.player_id = p.id
        LEFT JOIN (
          SELECT
            CASE
@@ -584,7 +604,7 @@ class TeamLeagueManager {
          GROUP BY player_id
        ) dl ON dl.player_id = p.id
        ORDER BY singles_wins DESC, player_name ASC`,
-      [...basePlayersParams, ...params]
+      [...basePlayersParams, ...teamParams, ...params]
     );
 
     const list = stats;

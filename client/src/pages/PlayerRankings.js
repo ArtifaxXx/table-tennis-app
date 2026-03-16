@@ -78,6 +78,7 @@ const PlayerRankings = () => {
               <tr>
                 <th className="cursor-pointer" onClick={() => requestSort('rank')}>Rank{sortIndicator(sortConfig, 'rank')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('player_name')}>Player{sortIndicator(sortConfig, 'player_name')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('team_name')}>Team{sortIndicator(sortConfig, 'team_name')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_wins')}>Singles Wins{sortIndicator(sortConfig, 'singles_wins')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_losses')}>Singles Losses{sortIndicator(sortConfig, 'singles_losses')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_played')}>Singles Played{sortIndicator(sortConfig, 'singles_played')}</th>
@@ -90,6 +91,7 @@ const PlayerRankings = () => {
                 <tr key={r.player_id}>
                   <td className="font-medium">{r.rank}</td>
                   <td className="font-medium">{r.player_name}</td>
+                  <td>{r.team_name || '-'}</td>
                   <td className="text-green-700 font-medium">{r.singles_wins}</td>
                   <td className="text-red-700 font-medium">{r.singles_losses}</td>
                   <td>{r.singles_played}</td>
