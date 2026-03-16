@@ -147,6 +147,7 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, asy
     const dataDir = path.dirname(dbPath);
     const candidateSnapshotDirs = [
       process.env.PREM_SNAPSHOT_DIR ? path.resolve(process.env.PREM_SNAPSHOT_DIR) : null,
+      path.join(process.cwd(), 'seed-snapshots', 'prem-division'),
       path.join(dataDir, 'seed-snapshots', 'prem-division'),
       path.join(__dirname, '../data/seed-snapshots/prem-division'),
       path.join(process.cwd(), 'data', 'seed-snapshots', 'prem-division'),
