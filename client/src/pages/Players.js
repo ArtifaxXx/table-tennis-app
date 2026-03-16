@@ -15,6 +15,7 @@ const Players = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('simple');
   const [formData, setFormData] = useState({
     name: '',
   });
@@ -93,6 +94,8 @@ const Players = () => {
     direction: 'asc',
   });
 
+  const getNumber = (value) => Number(value || 0);
+
   if (loading) {
     return <div className="text-center py-8">Loading players...</div>;
   }
@@ -150,99 +153,259 @@ const Players = () => {
       )}
 
       <Card>
-        <div className="flex items-center space-x-2 mb-4">
-          <Search size={20} className="text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search players..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input flex-1"
-          />
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+          <div className="flex items-center space-x-2 flex-1">
+            <Search size={20} className="text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search players..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input flex-1"
+            />
+          </div>
+          <div className="flex items-center rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              className={`px-3 py-1 text-sm rounded-md ${viewMode === 'simple' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              onClick={() => setViewMode('simple')}
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1 text-sm rounded-md ${viewMode === 'detailed' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              onClick={() => setViewMode('detailed')}
+            >
+              Detailed
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="table">
             <thead>
-              <tr>
-                <th className="cursor-pointer" onClick={() => requestSort('name')}>Name{sortIndicator(sortConfig, 'name')}</th>
-                <th
-                  className="cursor-pointer"
-                  onClick={() => requestSort('total_matches', (p) => Number(p.total_matches || 0))}
-                >
-                  Singles Played{sortIndicator(sortConfig, 'total_matches')}
-                </th>
-                <th
-                  className="cursor-pointer"
-                  onClick={() => requestSort('wins', (p) => Number(p.wins || 0))}
-                >
-                  Singles W/L/%{sortIndicator(sortConfig, 'wins')}
-                </th>
-                <th
-                  className="cursor-pointer"
-                  onClick={() => requestSort('singles_sets_won', (p) => Number(p.singles_sets_won || 0))}
-                >
-                  Sets W/L{sortIndicator(sortConfig, 'singles_sets_won')}
-                </th>
-                <th
-                  className="cursor-pointer"
-                  onClick={() => requestSort('doubles_played', (p) => Number(p.doubles_played || 0))}
-                >
-                  Doubles Played{sortIndicator(sortConfig, 'doubles_played')}
-                </th>
-                <th
-                  className="cursor-pointer"
-                  onClick={() => requestSort('doubles_wins', (p) => Number(p.doubles_wins || 0))}
-                >
-                  Doubles W/L/%{sortIndicator(sortConfig, 'doubles_wins')}
-                </th>
-                <th>Actions</th>
-              </tr>
+              {viewMode === 'simple' ? (
+                <tr>
+                  <th className="cursor-pointer" onClick={() => requestSort('name')}>Name{sortIndicator(sortConfig, 'name')}</th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('matches_played', (p) => getNumber(p.matches_played ?? (p.singles_played ?? p.total_matches) + getNumber(p.doubles_played)))}
+                  >
+                    Matches Played{sortIndicator(sortConfig, 'matches_played')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_wins', (p) => getNumber(p.singles_wins ?? p.wins))}
+                  >
+                    Singles W/L{sortIndicator(sortConfig, 'singles_wins')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_win_pct', (p) => getNumber(p.singles_win_pct ?? p.win_rate))}
+                  >
+                    Singles %{sortIndicator(sortConfig, 'singles_win_pct')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_wins', (p) => getNumber(p.doubles_wins))}
+                  >
+                    Doubles W/L{sortIndicator(sortConfig, 'doubles_wins')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_win_pct', (p) => getNumber(p.doubles_win_pct))}
+                  >
+                    Doubles %{sortIndicator(sortConfig, 'doubles_win_pct')}
+                  </th>
+                  <th>Actions</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th className="cursor-pointer" onClick={() => requestSort('name')}>Name{sortIndicator(sortConfig, 'name')}</th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('matches_played', (p) => getNumber(p.matches_played ?? (p.singles_played ?? p.total_matches) + getNumber(p.doubles_played)))}
+                  >
+                    Matches Played{sortIndicator(sortConfig, 'matches_played')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('overall_win_pct', (p) => getNumber(p.overall_win_pct ?? p.win_rate))}
+                  >
+                    Win %{sortIndicator(sortConfig, 'overall_win_pct')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_played', (p) => getNumber(p.singles_played ?? p.total_matches))}
+                  >
+                    Singles Played{sortIndicator(sortConfig, 'singles_played')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_wins', (p) => getNumber(p.singles_wins ?? p.wins))}
+                  >
+                    Singles Won{sortIndicator(sortConfig, 'singles_wins')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_losses', (p) => getNumber(p.singles_losses ?? p.losses))}
+                  >
+                    Singles Lost{sortIndicator(sortConfig, 'singles_losses')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_win_pct', (p) => getNumber(p.singles_win_pct ?? p.win_rate))}
+                  >
+                    Singles %{sortIndicator(sortConfig, 'singles_win_pct')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_sets_won', (p) => getNumber(p.singles_sets_won))}
+                  >
+                    Singles Sets W/L{sortIndicator(sortConfig, 'singles_sets_won')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('singles_points_won', (p) => getNumber(p.singles_points_won))}
+                  >
+                    Singles Points W/L{sortIndicator(sortConfig, 'singles_points_won')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_played', (p) => getNumber(p.doubles_played))}
+                  >
+                    Doubles Played{sortIndicator(sortConfig, 'doubles_played')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_wins', (p) => getNumber(p.doubles_wins))}
+                  >
+                    Doubles Won{sortIndicator(sortConfig, 'doubles_wins')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_losses', (p) => getNumber(p.doubles_losses))}
+                  >
+                    Doubles Lost{sortIndicator(sortConfig, 'doubles_losses')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_win_pct', (p) => getNumber(p.doubles_win_pct))}
+                  >
+                    Doubles %{sortIndicator(sortConfig, 'doubles_win_pct')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_sets_won', (p) => getNumber(p.doubles_sets_won))}
+                  >
+                    Doubles Sets W/L{sortIndicator(sortConfig, 'doubles_sets_won')}
+                  </th>
+                  <th
+                    className="cursor-pointer"
+                    onClick={() => requestSort('doubles_points_won', (p) => getNumber(p.doubles_points_won))}
+                  >
+                    Doubles Points W/L{sortIndicator(sortConfig, 'doubles_points_won')}
+                  </th>
+                  <th>Actions</th>
+                </tr>
+              )}
             </thead>
             <tbody>
-              {sortedPlayers.map((player) => (
-                <tr
-                  key={player.id}
-                  className={isAdmin ? 'cursor-pointer' : undefined}
-                  onClick={() => handleEdit(player)}
-                >
-                  <td className="font-medium">{player.name}</td>
-                  <td>{player.total_matches || 0}</td>
-                  <td className="font-medium">
-                    <span className="text-green-700">{player.wins || 0}</span>
-                    <span className="text-gray-500">/</span>
-                    <span className="text-red-700">{player.losses || 0}</span>
-                    <span className="text-gray-500"> ({player.win_rate || 0}%)</span>
-                  </td>
-                  <td className="font-medium">
-                    {player.singles_sets_won || 0}
-                    <span className="text-gray-500">/</span>
-                    {player.singles_sets_lost || 0}
-                  </td>
-                  <td>{player.doubles_played || 0}</td>
-                  <td className="font-medium">
-                    <span className="text-green-700">{player.doubles_wins || 0}</span>
-                    <span className="text-gray-500">/</span>
-                    <span className="text-red-700">{player.doubles_losses || 0}</span>
-                    <span className="text-gray-500"> ({player.doubles_win_pct || 0}%)</span>
-                  </td>
-                  <td>
-                    {isAdmin && (
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(player.id);
-                          }}
-                          className="btn btn-danger"
-                        >
-                          Delete
-                        </button>
-                      </div>
+              {sortedPlayers.map((player) => {
+                const singlesPlayed = getNumber(player.singles_played ?? player.total_matches);
+                const singlesWins = getNumber(player.singles_wins ?? player.wins);
+                const singlesLosses = getNumber(player.singles_losses ?? player.losses);
+                const singlesWinPct = getNumber(player.singles_win_pct ?? player.win_rate);
+                const singlesSetsWon = getNumber(player.singles_sets_won);
+                const singlesSetsLost = getNumber(player.singles_sets_lost);
+                const singlesPointsWon = getNumber(player.singles_points_won);
+                const singlesPointsLost = getNumber(player.singles_points_lost);
+                const doublesPlayed = getNumber(player.doubles_played);
+                const doublesWins = getNumber(player.doubles_wins);
+                const doublesLosses = getNumber(player.doubles_losses);
+                const doublesWinPct = getNumber(player.doubles_win_pct);
+                const doublesSetsWon = getNumber(player.doubles_sets_won);
+                const doublesSetsLost = getNumber(player.doubles_sets_lost);
+                const doublesPointsWon = getNumber(player.doubles_points_won);
+                const doublesPointsLost = getNumber(player.doubles_points_lost);
+                const matchesPlayed = getNumber(player.matches_played ?? (singlesPlayed + doublesPlayed));
+                const overallWinPct = getNumber(player.overall_win_pct ?? (matchesPlayed ? ((singlesWins + doublesWins) / matchesPlayed) * 100 : 0));
+
+                return (
+                  <tr
+                    key={player.id}
+                    className={isAdmin ? 'cursor-pointer' : undefined}
+                    onClick={() => handleEdit(player)}
+                  >
+                    <td className="font-medium">{player.name}</td>
+                    <td>{matchesPlayed}</td>
+                    {viewMode === 'simple' ? (
+                      <>
+                        <td className="font-medium">
+                          <span className="text-green-700">{singlesWins}</span>
+                          <span className="text-gray-500">/</span>
+                          <span className="text-red-700">{singlesLosses}</span>
+                        </td>
+                        <td>{singlesWinPct.toFixed(1)}%</td>
+                        <td className="font-medium">
+                          <span className="text-green-700">{doublesWins}</span>
+                          <span className="text-gray-500">/</span>
+                          <span className="text-red-700">{doublesLosses}</span>
+                        </td>
+                        <td>{doublesWinPct.toFixed(1)}%</td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{overallWinPct.toFixed(1)}%</td>
+                        <td>{singlesPlayed}</td>
+                        <td>{singlesWins}</td>
+                        <td>{singlesLosses}</td>
+                        <td>{singlesWinPct.toFixed(1)}%</td>
+                        <td>
+                          {singlesSetsWon}
+                          <span className="text-gray-500">/</span>
+                          {singlesSetsLost}
+                        </td>
+                        <td>
+                          {singlesPointsWon}
+                          <span className="text-gray-500">/</span>
+                          {singlesPointsLost}
+                        </td>
+                        <td>{doublesPlayed}</td>
+                        <td>{doublesWins}</td>
+                        <td>{doublesLosses}</td>
+                        <td>{doublesWinPct.toFixed(1)}%</td>
+                        <td>
+                          {doublesSetsWon}
+                          <span className="text-gray-500">/</span>
+                          {doublesSetsLost}
+                        </td>
+                        <td>
+                          {doublesPointsWon}
+                          <span className="text-gray-500">/</span>
+                          {doublesPointsLost}
+                        </td>
+                      </>
                     )}
-                  </td>
-                </tr>
-              ))}
+                    <td>
+                      {isAdmin && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(player.id);
+                            }}
+                            className="btn btn-danger"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {filteredPlayers.length === 0 && (

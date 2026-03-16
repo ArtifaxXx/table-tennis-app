@@ -144,21 +144,210 @@ class PlayerManager {
 
     const setsMap = new Map(setsByPlayer.map((r) => [r.player_id, r]));
 
+    const doublesSetsByPlayer = await this.db.all(
+      `SELECT player_id,
+              SUM(sets_won) as sets_won,
+              SUM(sets_lost) as sets_lost
+       FROM (
+         SELECT
+           fg.home_player_a_id as player_id,
+           COALESCE(fg.home_sets_won, 0) as sets_won,
+           COALESCE(fg.away_sets_won, 0) as sets_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT
+           fg.home_player_b_id as player_id,
+           COALESCE(fg.home_sets_won, 0) as sets_won,
+           COALESCE(fg.away_sets_won, 0) as sets_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.home_player_b_id IS NOT NULL
+
+         UNION ALL
+
+         SELECT
+           fg.away_player_a_id as player_id,
+           COALESCE(fg.away_sets_won, 0) as sets_won,
+           COALESCE(fg.home_sets_won, 0) as sets_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT
+           fg.away_player_b_id as player_id,
+           COALESCE(fg.away_sets_won, 0) as sets_won,
+           COALESCE(fg.home_sets_won, 0) as sets_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.away_player_b_id IS NOT NULL
+       ) t
+       WHERE player_id IS NOT NULL
+       GROUP BY player_id`,
+      []
+    );
+
+    const doublesSetsMap = new Map(doublesSetsByPlayer.map((r) => [r.player_id, r]));
+
+    const singlesPointsByPlayer = await this.db.all(
+      `SELECT player_id,
+              SUM(points_won) as points_won,
+              SUM(points_lost) as points_lost
+       FROM (
+         SELECT
+           fg.home_player_a_id as player_id,
+           COALESCE(gs.home_points, 0) as points_won,
+           COALESCE(gs.away_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'singles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT
+           fg.away_player_a_id as player_id,
+           COALESCE(gs.away_points, 0) as points_won,
+           COALESCE(gs.home_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'singles'
+           AND fg.winner_side IN ('home','away')
+       ) t
+       WHERE player_id IS NOT NULL
+       GROUP BY player_id`,
+      []
+    );
+
+    const singlesPointsMap = new Map(singlesPointsByPlayer.map((r) => [r.player_id, r]));
+
+    const doublesPointsByPlayer = await this.db.all(
+      `SELECT player_id,
+              SUM(points_won) as points_won,
+              SUM(points_lost) as points_lost
+       FROM (
+         SELECT
+           fg.home_player_a_id as player_id,
+           COALESCE(gs.home_points, 0) as points_won,
+           COALESCE(gs.away_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT
+           fg.home_player_b_id as player_id,
+           COALESCE(gs.home_points, 0) as points_won,
+           COALESCE(gs.away_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.home_player_b_id IS NOT NULL
+
+         UNION ALL
+
+         SELECT
+           fg.away_player_a_id as player_id,
+           COALESCE(gs.away_points, 0) as points_won,
+           COALESCE(gs.home_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+
+         UNION ALL
+
+         SELECT
+           fg.away_player_b_id as player_id,
+           COALESCE(gs.away_points, 0) as points_won,
+           COALESCE(gs.home_points, 0) as points_lost
+         FROM fixture_games fg
+         JOIN fixtures f ON fg.fixture_id = f.id
+         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         WHERE f.status = 'completed'
+           AND fg.game_type = 'doubles'
+           AND fg.winner_side IN ('home','away')
+           AND fg.away_player_b_id IS NOT NULL
+       ) t
+       WHERE player_id IS NOT NULL
+       GROUP BY player_id`,
+      []
+    );
+
+    const doublesPointsMap = new Map(doublesPointsByPlayer.map((r) => [r.player_id, r]));
+
     return players.map((player) => {
       const s = setsMap.get(player.id) || { sets_won: 0, sets_lost: 0 };
       const d = doublesMap.get(player.id) || { doubles_wins: 0, doubles_losses: 0 };
+      const ds = doublesSetsMap.get(player.id) || { sets_won: 0, sets_lost: 0 };
+      const sp = singlesPointsMap.get(player.id) || { points_won: 0, points_lost: 0 };
+      const dp = doublesPointsMap.get(player.id) || { points_won: 0, points_lost: 0 };
+
+      const singlesPlayed = Number(player.total_matches || 0);
+      const singlesWins = Number(player.wins || 0);
+      const singlesLosses = Number(player.losses || 0);
+      const singlesWinPct = singlesPlayed > 0 ? ((singlesWins / singlesPlayed) * 100).toFixed(1) : 0;
+
       const doublesWins = Number(d.doubles_wins || 0);
       const doublesLosses = Number(d.doubles_losses || 0);
       const doublesPlayed = doublesWins + doublesLosses;
+
+      const totalMatches = singlesPlayed + doublesPlayed;
+      const totalWins = singlesWins + doublesWins;
+      const totalLosses = singlesLosses + doublesLosses;
+      const overallWinPct = totalMatches > 0 ? ((totalWins / totalMatches) * 100).toFixed(1) : 0;
+
       return {
         ...player,
+        matches_played: totalMatches,
+        total_wins: totalWins,
+        total_losses: totalLosses,
+        overall_win_pct: overallWinPct,
+        singles_played: singlesPlayed,
+        singles_wins: singlesWins,
+        singles_losses: singlesLosses,
+        singles_win_pct: singlesWinPct,
         singles_sets_won: s.sets_won || 0,
         singles_sets_lost: s.sets_lost || 0,
-        win_rate: player.total_matches > 0 ? ((player.wins / player.total_matches) * 100).toFixed(1) : 0,
+        singles_points_won: sp.points_won || 0,
+        singles_points_lost: sp.points_lost || 0,
+        win_rate: singlesWinPct,
         doubles_wins: doublesWins,
         doubles_losses: doublesLosses,
         doubles_played: doublesPlayed,
         doubles_win_pct: doublesPlayed > 0 ? ((doublesWins / doublesPlayed) * 100).toFixed(1) : 0,
+        doubles_sets_won: ds.sets_won || 0,
+        doubles_sets_lost: ds.sets_lost || 0,
+        doubles_points_won: dp.points_won || 0,
+        doubles_points_lost: dp.points_lost || 0,
       };
     });
   }
