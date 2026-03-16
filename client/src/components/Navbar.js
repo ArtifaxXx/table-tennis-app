@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Trophy, Users, Calendar, BarChart3, Home, UserCircle, Menu, X } from 'lucide-react';
-import { useDivisionContext } from '../context/DivisionContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -21,13 +20,6 @@ const Navbar = () => {
   const [newPassword, setNewPassword] = useState('');
   const [seedLoading, setSeedLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
-
-  const {
-    divisions,
-    selectedDivisionId,
-    loading,
-    setSelectedDivisionId,
-  } = useDivisionContext();
 
   const refreshRole = async () => {
     try {
@@ -212,47 +204,24 @@ const Navbar = () => {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <select
-                className="input w-full md:w-auto md:min-w-56"
-                value={selectedDivisionId}
-                onChange={(e) => setSelectedDivisionId(e.target.value)}
-                disabled={loading}
-              >
-                {loading && (
-                  <option value="">Loading divisions...</option>
-                )}
-                {!loading && divisions.length === 0 && (
-                  <option value="">No divisions</option>
-                )}
-                {divisions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="mt-3 hidden md:flex items-center gap-2 flex-wrap">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
 
-            <div className="hidden md:flex items-center gap-2 flex-wrap">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`nav-link flex items-center space-x-2 ${
-                      isActive ? 'nav-link-active' : 'nav-link-inactive'
-                    }`}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`nav-link flex items-center space-x-2 ${
+                    isActive ? 'nav-link-active' : 'nav-link-inactive'
+                  }`}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
           </div>
 
           {mobileOpen && (

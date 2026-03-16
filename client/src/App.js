@@ -36,6 +36,9 @@ function App() {
                 <Route path="/seasons" element={<Seasons />} />
               </Routes>
             </main>
+            <footer className="container mx-auto px-4 pb-6 text-xs text-gray-500">
+              Created by Alexey Reutov
+            </footer>
             <ToastViewport />
             <BuildInfoWidget />
           </div>

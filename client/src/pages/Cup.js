@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useDivisionContext } from '../context/DivisionContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
+import DivisionSelector from '../components/DivisionSelector';
 
 const Cup = () => {
   const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
@@ -196,20 +197,24 @@ const Cup = () => {
               </select>
             </div>
 
-            <button
-              type="button"
-              className={`btn ${viewMode === 'bracket' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('bracket')}
-            >
-              Bracket
-            </button>
-            <button
-              type="button"
-              className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('list')}
-            >
-              List
-            </button>
+            <DivisionSelector />
+
+            <div className="flex items-center rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm rounded-md ${viewMode === 'bracket' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                onClick={() => setViewMode('bracket')}
+              >
+                Bracket
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm rounded-md ${viewMode === 'list' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                onClick={() => setViewMode('list')}
+              >
+                List
+              </button>
+            </div>
           </div>
         }
       />

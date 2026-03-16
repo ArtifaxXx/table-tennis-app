@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useDivisionContext } from '../context/DivisionContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
+import DivisionSelector from '../components/DivisionSelector';
 import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
 const Dashboard = () => {
@@ -98,7 +99,7 @@ const Dashboard = () => {
       missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
     };
     const labels = {
-      complete: 'Complete',
+      complete: 'Correct',
       violation: 'Violation',
       missing_lineups: 'Lineups',
       missing_games: 'Games',
@@ -131,6 +132,7 @@ const Dashboard = () => {
       <PageHeader
         title="League Dashboard"
         subtitle={seasonLabel ? seasonLabel : null}
+        right={<DivisionSelector />}
       />
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

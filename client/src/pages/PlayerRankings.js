@@ -4,6 +4,7 @@ import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
+import DivisionSelector from '../components/DivisionSelector';
 
 const PlayerRankings = () => {
   const [rows, setRows] = useState([]);
@@ -54,15 +55,18 @@ const PlayerRankings = () => {
           </>
         }
         right={
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Season</span>
-            <select className="input" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
-              {seasons.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}{s.status === 'active' ? ' (active)' : ''}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Season</span>
+              <select className="input" value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)}>
+                {seasons.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.status === 'active' ? ' (active)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <DivisionSelector />
           </div>
         }
       />

@@ -615,7 +615,7 @@ const Seasons = () => {
               <div className="text-gray-600">Loading preview...</div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="bg-gray-50 border rounded p-3">
                     <div className="text-xs text-gray-500">Start</div>
                     <div className="font-medium text-gray-800">
@@ -632,6 +632,10 @@ const Seasons = () => {
                     <div className="text-xs text-gray-500">Total fixtures</div>
                     <div className="font-medium text-gray-800">{fixturePreview?.total_fixtures ?? '-'}</div>
                   </div>
+                  <div className="bg-gray-50 border rounded p-3">
+                    <div className="text-xs text-gray-500">Cup fixtures</div>
+                    <div className="font-medium text-gray-800">{fixturePreview?.total_cup_fixtures ?? '-'}</div>
+                  </div>
                 </div>
 
                 <div>
@@ -642,7 +646,9 @@ const Seasons = () => {
                         <tr>
                           <th>Division</th>
                           <th>Teams</th>
-                          <th>Fixtures</th>
+                          <th>League</th>
+                          <th>Cup</th>
+                          <th>Total</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -651,11 +657,13 @@ const Seasons = () => {
                             <td className="font-medium">{d.division_name}</td>
                             <td>{d.team_count}</td>
                             <td>{d.fixture_count}</td>
+                            <td>{d.cup_fixture_count ?? 0}</td>
+                            <td>{d.total_fixture_count ?? d.fixture_count}</td>
                           </tr>
                         ))}
                         {(!fixturePreview?.divisions || fixturePreview.divisions.length === 0) && (
                           <tr>
-                            <td colSpan={3} className="text-gray-500">No divisions found.</td>
+                            <td colSpan={5} className="text-gray-500">No divisions found.</td>
                           </tr>
                         )}
                       </tbody>

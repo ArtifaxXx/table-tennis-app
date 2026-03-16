@@ -568,6 +568,7 @@ app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, re
 
     const perDivision = [];
     let totalFixtures = 0;
+    let totalCupFixtures = 0;
 
     for (const d of (divisions || [])) {
       const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
@@ -575,16 +576,20 @@ app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, re
 
       // Double round robin: each pair plays twice => n*(n-1)
       const fixtureCount = teamCount >= 2 ? (teamCount * (teamCount - 1)) : 0;
+      const cupFixtureCount = teamCount >= 2 ? (teamCount - 1) : 0;
       if (teamCount < 2) {
         warnings.push(`Division "${d.name}" has fewer than 2 teams and will be skipped.`);
       }
 
-      totalFixtures += fixtureCount;
+      totalFixtures += fixtureCount + cupFixtureCount;
+      totalCupFixtures += cupFixtureCount;
       perDivision.push({
         division_id: d.id,
         division_name: d.name,
         team_count: teamCount,
         fixture_count: fixtureCount,
+        cup_fixture_count: cupFixtureCount,
+        total_fixture_count: fixtureCount + cupFixtureCount,
       });
     }
 
@@ -598,6 +603,7 @@ app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, re
       schedule_end_date: scheduleEndDate || null,
       divisions: perDivision,
       total_fixtures: totalFixtures,
+      total_cup_fixtures: totalCupFixtures,
       warnings,
     });
   } catch (error) {
