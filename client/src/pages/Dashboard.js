@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
-import { Users, Calendar, Trophy } from 'lucide-react';
+import { Users, User, CalendarDays, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { useDivisionContext } from '../context/DivisionContext';
@@ -13,6 +13,8 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [globalStats, setGlobalStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [newsItems, setNewsItems] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
   const [performanceTab, setPerformanceTab] = useState('teams');
   const [adminStats, setAdminStats] = useState(null);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -114,19 +116,34 @@ const Dashboard = () => {
     }
   }, [isAdmin, selectedDivisionId, selectedSeasonId]);
 
+  const fetchNews = useCallback(async () => {
+    setNewsLoading(true);
+    try {
+      const response = await axios.get('/api/news');
+      setNewsItems(response.data || []);
+    } catch (error) {
+      console.error('Error fetching news:', error);
+      setNewsItems([]);
+    } finally {
+      setNewsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStats();
     fetchGlobalStats();
     fetchAdminStats();
+    fetchNews();
 
     const onFocus = () => {
       fetchStats();
       fetchGlobalStats();
       fetchAdminStats();
+      fetchNews();
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [fetchStats, fetchGlobalStats, fetchAdminStats]);
+  }, [fetchStats, fetchGlobalStats, fetchAdminStats, fetchNews]);
 
   if (loading) {
     return <div className="text-center py-8">Loading dashboard...</div>;
@@ -158,7 +175,7 @@ const Dashboard = () => {
     {
       title: 'Players',
       value: global?.totalPlayers ?? 0,
-      icon: Users,
+      icon: User,
       color: 'bg-indigo-500',
       scope: 'League total',
       to: '/players'
@@ -166,7 +183,7 @@ const Dashboard = () => {
     {
       title: 'Completed Fixtures',
       value: global?.completedFixtures ?? 0,
-      icon: Trophy,
+      icon: CheckCircle2,
       color: 'bg-green-500',
       scope: globalFixtureMeta,
       to: '/fixtures'
@@ -174,7 +191,7 @@ const Dashboard = () => {
     {
       title: 'Scheduled Fixtures',
       value: global?.scheduledFixtures ?? 0,
-      icon: Calendar,
+      icon: CalendarDays,
       color: 'bg-yellow-500',
       scope: globalFixtureMeta,
       to: '/fixtures'
@@ -227,6 +244,13 @@ const Dashboard = () => {
     );
   };
 
+  const formatDateTime = (value) => {
+    if (!value) return 'Unknown time';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -258,180 +282,217 @@ const Dashboard = () => {
         })}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-gray-500">Division scope</div>
-          <div className="text-sm font-semibold text-gray-800">{performanceMeta}</div>
-        </div>
-        <DivisionSelector />
-      </div>
-
       <div className="space-y-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Current season results</h3>
-            <div className="text-xs text-gray-500">Top 5 standings and rankings</div>
+            <h3 className="text-lg font-semibold text-gray-800">News & Announcements</h3>
+            <div className="text-xs text-gray-500">Latest league updates</div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-              <button
-                type="button"
-                className={`px-3 py-1 text-sm rounded-md ${performanceTab === 'teams' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-                onClick={() => setPerformanceTab('teams')}
-              >
-                Team standings
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1 text-sm rounded-md ${performanceTab === 'players' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-                onClick={() => setPerformanceTab('players')}
-              >
-                Player rankings
-              </button>
-            </div>
-            <Link className="text-sm text-blue-600 hover:text-blue-800" to={performanceLink}>
-              View all
-            </Link>
-          </div>
+          <Link className="text-sm text-blue-600 hover:text-blue-800" to="/news">
+            View all
+          </Link>
         </div>
-
         <Card>
-          {performanceTab === 'teams' ? (
-            <div className="space-y-2">
-              {(stats.topTeams || []).map((team, index) => (
-                <Link
-                  key={team.team_id || index}
-                  to="/team-standings"
-                  className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 text-sm font-semibold text-gray-600">#{team.rank || index + 1}</span>
-                      <span className="font-medium text-gray-800">{team.team_name}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {team.wins}W / {team.losses}L · Games {team.games_won}-{team.games_lost}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500">Games diff</div>
-                    <div className="text-sm font-semibold text-gray-800">{team.games_won - team.games_lost}</div>
-                  </div>
-                </Link>
-              ))}
-              {(!stats.topTeams || stats.topTeams.length === 0) && (
-                <div className="text-gray-500 text-center py-4">No standings yet</div>
-              )}
-            </div>
+          {newsLoading ? (
+            <div className="text-sm text-gray-500">Loading announcements...</div>
           ) : (
             <div className="space-y-2">
-              {(stats.topPlayers || []).map((player, index) => (
+              {(newsItems || []).slice(0, 3).map((item) => (
                 <Link
-                  key={player.player_id || index}
-                  to="/player-rankings"
-                  className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                  key={item.id}
+                  to="/news"
+                  className="block rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
                 >
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <span className="w-7 text-sm font-semibold text-gray-600">#{player.rank || index + 1}</span>
-                      <span className="font-medium text-gray-800">{player.player_name}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">{player.team_name || 'Unassigned'}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-800">{item.title}</span>
+                    <span className="text-xs text-gray-500">{formatDateTime(item.created_at)}</span>
                   </div>
-                  <div className="text-sm text-gray-700">{player.singles_wins} W</div>
                 </Link>
               ))}
-              {(!stats.topPlayers || stats.topPlayers.length === 0) && (
-                <div className="text-gray-500 text-center py-4">No singles results yet</div>
+              {(!newsItems || newsItems.length === 0) && (
+                <div className="text-sm text-gray-500 text-center py-2">No announcements yet</div>
               )}
             </div>
           )}
         </Card>
       </div>
 
-      {isAdmin && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">Admin Insights</h3>
-              <div className="text-xs text-gray-500">Top 5 · {performanceMeta}</div>
-            </div>
-            <Link className="text-sm text-blue-600 hover:text-blue-800" to="/fixtures">
-              Go to fixtures
-            </Link>
+      <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-gray-500">Division scope</div>
+            <div className="text-sm font-semibold text-gray-800">{performanceMeta}</div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="text-sm font-semibold text-gray-800">Most unplayed fixtures</div>
-                  <div className="text-xs text-gray-500">Teams with highest remaining load</div>
-                </div>
-                <Link className="text-xs text-blue-600 hover:text-blue-800" to="/fixtures">
-                  View
-                </Link>
-              </div>
-              {adminLoading ? (
-                <div className="text-sm text-gray-500">Loading...</div>
-              ) : (
-                <div className="space-y-2">
-                  {(adminStats?.unplayedTeams || []).map((team) => (
-                    <Link
-                      key={team.team_id}
-                      to="/fixtures"
-                      className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
-                    >
-                      <span className="font-medium text-gray-800">{team.team_name}</span>
-                      <span className="text-sm text-gray-600">{team.count}</span>
-                    </Link>
-                  ))}
-                  {(!adminStats?.unplayedTeams || adminStats.unplayedTeams.length === 0) && (
-                    <div className="text-sm text-gray-500">No remaining fixtures found.</div>
-                  )}
-                </div>
-              )}
-            </Card>
+          <DivisionSelector />
+        </div>
 
-            <Card>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="text-sm font-semibold text-gray-800">Validation issues</div>
-                  <div className="text-xs text-gray-500">Completed fixtures needing review</div>
-                </div>
-                <Link className="text-xs text-blue-600 hover:text-blue-800" to="/fixtures">
-                  View
-                </Link>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Current season results</h3>
+              <div className="text-xs text-gray-500">Top 5 standings and rankings</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-sm rounded-md ${performanceTab === 'teams' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                  onClick={() => setPerformanceTab('teams')}
+                >
+                  Team standings
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-sm rounded-md ${performanceTab === 'players' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                  onClick={() => setPerformanceTab('players')}
+                >
+                  Player rankings
+                </button>
               </div>
-              {adminLoading ? (
-                <div className="text-sm text-gray-500">Loading...</div>
-              ) : (
-                <div className="space-y-2">
-                  {(adminStats?.validationIssues || []).map((fixture) => (
-                    <Link
-                      key={fixture.id}
-                      to={`/fixtures/${fixture.id}`}
-                      className="block rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-800">
-                          {fixture.home_team_name} vs {fixture.away_team_name}
-                        </span>
-                        {completenessBadge(fixture.completeness_status)}
+              <Link className="text-sm text-blue-600 hover:text-blue-800" to={performanceLink}>
+                View all
+              </Link>
+            </div>
+          </div>
+
+          <Card>
+            {performanceTab === 'teams' ? (
+              <div className="space-y-2">
+                {(stats.topTeams || []).map((team, index) => (
+                  <Link
+                    key={team.team_id || index}
+                    to="/team-standings"
+                    className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 text-sm font-semibold text-gray-600">#{team.rank || index + 1}</span>
+                        <span className="font-medium text-gray-800">{team.team_name}</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {fixture.match_date ? new Date(fixture.match_date).toLocaleDateString() : 'No date'}
+                        {team.wins}W / {team.losses}L · Games {team.games_won}-{team.games_lost}
                       </div>
-                    </Link>
-                  ))}
-                  {(!adminStats?.validationIssues || adminStats.validationIssues.length === 0) && (
-                    <div className="text-sm text-gray-500">No validation issues found.</div>
-                  )}
-                </div>
-              )}
-            </Card>
-          </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">Games diff</div>
+                      <div className="text-sm font-semibold text-gray-800">{team.games_won - team.games_lost}</div>
+                    </div>
+                  </Link>
+                ))}
+                {(!stats.topTeams || stats.topTeams.length === 0) && (
+                  <div className="text-gray-500 text-center py-4">No standings yet</div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(stats.topPlayers || []).map((player, index) => (
+                  <Link
+                    key={player.player_id || index}
+                    to="/player-rankings"
+                    className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                  >
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 text-sm font-semibold text-gray-600">#{player.rank || index + 1}</span>
+                        <span className="font-medium text-gray-800">{player.player_name}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{player.team_name || 'Unassigned'}</div>
+                    </div>
+                    <div className="text-sm text-gray-700">{player.singles_wins} W</div>
+                  </Link>
+                ))}
+                {(!stats.topPlayers || stats.topPlayers.length === 0) && (
+                  <div className="text-gray-500 text-center py-4">No singles results yet</div>
+                )}
+              </div>
+            )}
+          </Card>
         </div>
-      )}
+
+        {isAdmin && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Admin Insights</h3>
+                <div className="text-xs text-gray-500">Top 5 · {performanceMeta}</div>
+              </div>
+              <Link className="text-sm text-blue-600 hover:text-blue-800" to="/fixtures">
+                Go to fixtures
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Most unplayed fixtures</div>
+                    <div className="text-xs text-gray-500">Teams with highest remaining load</div>
+                  </div>
+                  <Link className="text-xs text-blue-600 hover:text-blue-800" to="/fixtures">
+                    View
+                  </Link>
+                </div>
+                {adminLoading ? (
+                  <div className="text-sm text-gray-500">Loading...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {(adminStats?.unplayedTeams || []).map((team) => (
+                      <Link
+                        key={team.team_id}
+                        to="/fixtures"
+                        className="flex items-center justify-between rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                      >
+                        <span className="font-medium text-gray-800">{team.team_name}</span>
+                        <span className="text-sm text-gray-600">{team.count}</span>
+                      </Link>
+                    ))}
+                    {(!adminStats?.unplayedTeams || adminStats.unplayedTeams.length === 0) && (
+                      <div className="text-sm text-gray-500">No remaining fixtures found.</div>
+                    )}
+                  </div>
+                )}
+              </Card>
+
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Validation issues</div>
+                    <div className="text-xs text-gray-500">Completed fixtures needing review</div>
+                  </div>
+                  <Link className="text-xs text-blue-600 hover:text-blue-800" to="/fixtures">
+                    View
+                  </Link>
+                </div>
+                {adminLoading ? (
+                  <div className="text-sm text-gray-500">Loading...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {(adminStats?.validationIssues || []).map((fixture) => (
+                      <Link
+                        key={fixture.id}
+                        to={`/fixtures/${fixture.id}`}
+                        className="block rounded border border-gray-100 px-3 py-2 hover:bg-gray-50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-800">
+                            {fixture.home_team_name} vs {fixture.away_team_name}
+                          </span>
+                          {completenessBadge(fixture.completeness_status)}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {fixture.match_date ? new Date(fixture.match_date).toLocaleDateString() : 'No date'}
+                        </div>
+                      </Link>
+                    ))}
+                    {(!adminStats?.validationIssues || adminStats.validationIssues.length === 0) && (
+                      <div className="text-sm text-gray-500">No validation issues found.</div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Trophy, Users, Calendar, BarChart3, Home, UserCircle, Menu, X } from 'lucide-react';
+import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -18,7 +18,6 @@ const Navbar = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
-  const [seedLoading, setSeedLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   const refreshRole = async () => {
@@ -70,21 +69,6 @@ const Navbar = () => {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const seedData = async () => {
-    if (seedLoading) return;
-    if (!window.confirm('Seed data now? This will wipe existing data.')) return;
-
-    setSeedLoading(true);
-    try {
-      await axios.post('/api/admin/seed', {});
-      toast.success('Seed completed');
-    } catch (e) {
-      toast.error(e?.response?.data?.error || e.message);
-    } finally {
-      setSeedLoading(false);
     }
   };
 
@@ -149,14 +133,15 @@ const Navbar = () => {
   };
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: Home },
-    { path: '/players', label: 'Players', icon: Users },
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/news', label: 'News & Announcements', icon: Newspaper },
+    { path: '/players', label: 'Players', icon: User },
     { path: '/teams', label: 'Teams', icon: Users },
-    { path: '/fixtures', label: 'Season Fixtures', icon: Calendar },
-    { path: '/team-standings', label: 'Standings', icon: Trophy },
+    { path: '/fixtures', label: 'Season Fixtures', icon: CalendarDays },
+    { path: '/team-standings', label: 'Standings', icon: Table2 },
     { path: '/cup', label: 'Cup', icon: Trophy },
     { path: '/player-rankings', label: 'Player Rankings', icon: BarChart3 },
-    { path: '/seasons', label: 'Seasons', icon: Calendar },
+    { path: '/seasons', label: 'Seasons', icon: Archive },
   ];
 
   return (
@@ -287,21 +272,6 @@ const Navbar = () => {
 
                 <div className="border-t pt-4 space-y-4">
                   <div>
-                    <div className="text-sm font-semibold text-gray-800">Seed data</div>
-                    <div className="text-sm text-gray-700">This wipes all data and recreates demo data.</div>
-                    <div className="flex justify-end">
-                      <button
-                        className="btn btn-primary"
-                        type="button"
-                        onClick={seedData}
-                        disabled={authLoading || seedLoading || restoreLoading}
-                      >
-                        {seedLoading ? 'Seeding...' : 'Seed Data'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
                     <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
                     <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
                     <div className="flex justify-end">
@@ -309,7 +279,7 @@ const Navbar = () => {
                         className="btn btn-primary"
                         type="button"
                         onClick={restorePremierSnapshot}
-                        disabled={authLoading || seedLoading || restoreLoading}
+                        disabled={authLoading || restoreLoading}
                       >
                         {restoreLoading ? 'Restoring...' : 'Restore Premier Snapshot'}
                       </button>
@@ -376,9 +346,6 @@ const Navbar = () => {
               </div>
               <div>
                 To get admin rights click profile icon at the top right and put in <span className="font-semibold">"555"</span> as password.
-              </div>
-              <div>
-                To get some generated data enter admin mode and click on <span className="font-semibold">"Seed Data"</span>. Wait till it finishes (40 sec) and reload the page.
               </div>
               <div>
                 To get more real data with current Prem division state - click <span className="font-semibold">"Restore Premiere snapshot"</span>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
+import News from './pages/News';
 import Players from './pages/Players';
 import Teams from './pages/Teams';
 import Fixtures from './pages/Fixtures';
@@ -26,6 +27,7 @@ function App() {
             <main className="container mx-auto px-4 py-8">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/news" element={<News />} />
                 <Route path="/players" element={<Players />} />
                 <Route path="/teams" element={<Teams />} />
                 <Route path="/fixtures" element={<Fixtures />} />

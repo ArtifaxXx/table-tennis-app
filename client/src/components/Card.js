@@ -1,7 +1,11 @@
 import React from 'react';
 
-const Card = ({ className = '', children }) => {
-  return <div className={`card ${className}`.trim()}>{children}</div>;
+const Card = ({ className = '', children, ...rest }) => {
+  return (
+    <div className={`card ${className}`.trim()} {...rest}>
+      {children}
+    </div>
+  );
 };
 
 export default Card;

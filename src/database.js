@@ -149,6 +149,17 @@ class Database {
     }
   }
 
+  async ensureNewsPinnedColumn() {
+    const columns = await this.all('PRAGMA table_info(news)');
+    if (!columns || columns.length === 0) return;
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('pinned')) {
+      await this.run('ALTER TABLE news ADD COLUMN pinned INTEGER DEFAULT 0');
+      await this.run('UPDATE news SET pinned = 0 WHERE pinned IS NULL', []);
+    }
+  }
+
   async initialize() {
     return new Promise((resolve, reject) => {
        const dbDir = path.dirname(this.dbPath);
@@ -176,6 +187,15 @@ class Database {
         phone TEXT,
         skill_level INTEGER DEFAULT 1,
         active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS news (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        pinned INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
@@ -415,6 +435,9 @@ class Database {
 
     // Ensure team season schedule window columns exist for older databases.
     await this.ensureTeamSeasonsScheduleWindowColumns();
+
+    // Ensure news.pinned exists for older databases.
+    await this.ensureNewsPinnedColumn();
 
     await this.ensureDefaultDivisionBackfill();
 

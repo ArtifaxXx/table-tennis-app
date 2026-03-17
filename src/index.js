@@ -9,6 +9,7 @@ const PlayerManager = require('./models/player');
 const MatchManager = require('./models/match');
 const LeagueManager = require('./models/league');
 const TeamManager = require('./models/team');
+const NewsManager = require('./models/news');
 const FixtureManager = require('./models/fixture');
 const TeamLeagueManager = require('./models/teamLeague');
 const TeamSeasonManager = require('./models/teamSeason');
@@ -69,6 +70,7 @@ const playerManager = new PlayerManager(db);
 const matchManager = new MatchManager(db);
 const leagueManager = new LeagueManager(db);
 const teamManager = new TeamManager(db);
+const newsManager = new NewsManager(db);
 const fixtureManager = new FixtureManager(db);
 const teamLeagueManager = new TeamLeagueManager(db);
 const teamSeasonManager = new TeamSeasonManager(db);
@@ -143,6 +145,16 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, asy
 
   isSeeding = true;
   try {
+    let preservedNews = [];
+    let preservedPinnedId = null;
+    try {
+      preservedNews = await newsManager.getAllNews();
+      preservedPinnedId = preservedNews.find((item) => item.pinned)?.id || null;
+    } catch (error) {
+      console.warn('Unable to preserve news before restore:', error.message);
+      preservedNews = [];
+    }
+
     const dbPath = db.dbPath || path.join(__dirname, '../data/league.db');
     const dataDir = path.dirname(dbPath);
     const candidateSnapshotDirs = [
@@ -180,6 +192,28 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, asy
     if (!shmCopied && fs.existsSync(destShm)) fs.rmSync(destShm);
 
     await db.initialize();
+
+    if (preservedNews.length > 0) {
+      for (const item of preservedNews) {
+        await db.run(
+          `INSERT OR IGNORE INTO news (id, title, body, pinned, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            item.id,
+            item.title,
+            item.body,
+            item.pinned ? 1 : 0,
+            item.created_at,
+            item.updated_at || item.created_at,
+          ]
+        );
+      }
+
+      if (preservedPinnedId) {
+        await db.run('UPDATE news SET pinned = 0');
+        await db.run('UPDATE news SET pinned = 1 WHERE id = ?', [preservedPinnedId]);
+      }
+    }
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -234,6 +268,51 @@ app.post('/api/admin/seed', requireAdmin, requireSeedToken, async (req, res) => 
     res.status(500).json({ error: error.message });
   } finally {
     isSeeding = false;
+  }
+});
+
+app.get('/api/news', async (req, res) => {
+  try {
+    const news = await newsManager.getAllNews();
+    res.json(news);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/news', requireAdmin, async (req, res) => {
+  try {
+    const item = await newsManager.createNews(req.body);
+    res.status(201).json(item);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/news/:id', requireAdmin, async (req, res) => {
+  try {
+    await newsManager.deleteNews(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/news/:id/pin', requireAdmin, async (req, res) => {
+  try {
+    await newsManager.pinNews(req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/news/:id/unpin', requireAdmin, async (req, res) => {
+  try {
+    await newsManager.unpinNews(req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
