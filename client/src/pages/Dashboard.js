@@ -285,7 +285,7 @@ const Dashboard = () => {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">News & Announcements</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Announcements</h3>
             <div className="text-xs text-gray-500">Latest league updates</div>
           </div>
           <Link className="text-sm text-blue-600 hover:text-blue-800" to="/news">

@@ -40,6 +40,32 @@ class NewsManager {
     return this.getNewsById(id);
   }
 
+  async updateNews(id, { title, body } = {}) {
+    const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+    const trimmedBody = typeof body === 'string' ? body.trim() : '';
+
+    if (!trimmedTitle) {
+      throw new Error('Title is required');
+    }
+
+    if (!trimmedBody) {
+      throw new Error('Body is required');
+    }
+
+    const result = await this.db.run(
+      `UPDATE news
+       SET title = ?, body = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [trimmedTitle, trimmedBody, id]
+    );
+
+    if (result.changes === 0) {
+      throw new Error('News entry not found');
+    }
+
+    return this.getNewsById(id);
+  }
+
   async deleteNews(id) {
     const result = await this.db.run('DELETE FROM news WHERE id = ?', [id]);
     if (result.changes === 0) {

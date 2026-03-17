@@ -134,7 +134,7 @@ const Navbar = () => {
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/news', label: 'News & Announcements', icon: Newspaper },
+    { path: '/news', label: 'Announcements', icon: Newspaper },
     { path: '/players', label: 'Players', icon: User },
     { path: '/teams', label: 'Teams', icon: Users },
     { path: '/fixtures', label: 'Season Fixtures', icon: CalendarDays },

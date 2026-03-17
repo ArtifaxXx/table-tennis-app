@@ -200,6 +200,18 @@ class Database {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
 
+      `CREATE TABLE IF NOT EXISTS activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        action TEXT,
+        entity TEXT,
+        entity_id TEXT,
+        details TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
       `CREATE TABLE IF NOT EXISTS team_seasons (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,

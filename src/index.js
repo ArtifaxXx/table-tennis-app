@@ -21,6 +21,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 let currentAdminPassword = null;
 let isSeeding = false;
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+let visitorLogDate = new Date().toISOString().slice(0, 10);
+const visitorLogCache = new Set();
 
 // Middleware
 app.use((req, res, next) => {
@@ -64,6 +67,41 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+  if (!shouldLogVisit(req)) return next();
+  const dateKey = resetVisitorLogCacheIfNeeded();
+  const visitorKey = `${dateKey}:${req.ip}:${req.get('user-agent') || ''}`;
+  if (visitorLogCache.has(visitorKey)) return next();
+  visitorLogCache.add(visitorKey);
+  void logActivity({
+    eventType: 'visit',
+    action: 'page_view',
+    entity: 'site',
+    details: { path: req.originalUrl },
+    req,
+  });
+  return next();
+});
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/') || !WRITE_METHODS.has(req.method)) return next();
+  res.on('finish', () => {
+    if (res.statusCode >= 400) return;
+    const meta = parseEntityFromPath(req.path);
+    if (!meta) return;
+    const action = meta.actionSuffix ? `${req.method}:${meta.actionSuffix}` : req.method;
+    void logActivity({
+      eventType: 'edit',
+      action,
+      entity: meta.entity,
+      entityId: meta.entityId,
+      details: { path: req.originalUrl, role: req.role },
+      req,
+    });
+  });
+  return next();
+});
+
 // Initialize database
 const db = new Database();
 const playerManager = new PlayerManager(db);
@@ -75,6 +113,57 @@ const fixtureManager = new FixtureManager(db);
 const teamLeagueManager = new TeamLeagueManager(db);
 const teamSeasonManager = new TeamSeasonManager(db);
 const teamSeasonDivisionManager = new TeamSeasonDivisionManager(db);
+
+function resetVisitorLogCacheIfNeeded() {
+  const nextDate = new Date().toISOString().slice(0, 10);
+  if (nextDate !== visitorLogDate) {
+    visitorLogDate = nextDate;
+    visitorLogCache.clear();
+  }
+  return visitorLogDate;
+}
+
+function shouldLogVisit(req) {
+  if (req.method !== 'GET') return false;
+  if (req.path && req.path.startsWith('/api/')) return false;
+  const accept = req.get('accept') || '';
+  const extension = path.extname(req.path || '');
+  if (extension && !accept.includes('text/html')) return false;
+  return accept.includes('text/html') || !extension;
+}
+
+function parseEntityFromPath(pathname) {
+  const trimmed = pathname.replace(/^\/api\//, '');
+  if (!trimmed) return null;
+  const [entity, entityId, actionSuffix] = trimmed.split('/');
+  if (!entity || entity === 'admin' || entity === 'auth') return null;
+  return {
+    entity,
+    entityId: entityId || null,
+    actionSuffix: actionSuffix || null,
+  };
+}
+
+async function logActivity({ eventType, action, entity, entityId, details, req }) {
+  try {
+    const payload = details ? JSON.stringify(details) : null;
+    await db.run(
+      `INSERT INTO activity_logs (event_type, action, entity, entity_id, details, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        eventType,
+        action || null,
+        entity || null,
+        entityId || null,
+        payload,
+        req?.ip || null,
+        req?.get('user-agent') || null,
+      ]
+    );
+  } catch (error) {
+    console.warn('Activity log failed:', error.message);
+  }
+}
 
 async function resolveTeamSeasonId(req) {
   if (req.query && req.query.seasonId) return req.query.seasonId;
@@ -284,6 +373,15 @@ app.post('/api/news', requireAdmin, async (req, res) => {
   try {
     const item = await newsManager.createNews(req.body);
     res.status(201).json(item);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/news/:id', requireAdmin, async (req, res) => {
+  try {
+    const item = await newsManager.updateNews(req.params.id, req.body);
+    res.json(item);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

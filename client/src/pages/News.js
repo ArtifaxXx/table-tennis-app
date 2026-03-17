@@ -13,6 +13,7 @@ const News = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ title: '', body: '' });
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [expandedIds, setExpandedIds] = useState(new Set());
   const didInitRef = useRef(false);
 
@@ -31,6 +32,19 @@ const News = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEdit = (item) => {
+    if (!isAdmin) return;
+    setEditingAnnouncement(item);
+    setFormData({ title: item.title || '', body: item.body || '' });
+    setShowForm(true);
+  };
+
+  const startNewAnnouncement = () => {
+    setEditingAnnouncement(null);
+    setFormData({ title: '', body: '' });
+    setShowForm(true);
   };
 
   const handleDelete = async (id) => {
@@ -70,6 +84,7 @@ const News = () => {
 
   const resetForm = () => {
     setFormData({ title: '', body: '' });
+    setEditingAnnouncement(null);
     setShowForm(false);
   };
 
@@ -78,10 +93,14 @@ const News = () => {
     if (!isAdmin) return;
 
     try {
-      await axios.post('/api/news', formData);
+      if (editingAnnouncement) {
+        await axios.put(`/api/news/${editingAnnouncement.id}`, formData);
+      } else {
+        await axios.post('/api/news', formData);
+      }
       await fetchNews();
       resetForm();
-      toast.success('Announcement posted');
+      toast.success(editingAnnouncement ? 'Announcement updated' : 'Announcement posted');
     } catch (error) {
       console.error('Error creating news:', error);
       toast.error(error?.response?.data?.error || error.message);
@@ -114,13 +133,13 @@ const News = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="News & Announcements"
+        title="Announcements"
         subtitle="Latest league updates"
         right={
           isAdmin ? (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
+              onClick={startNewAnnouncement}
               className="btn btn-primary flex items-center space-x-2"
             >
               <Plus size={20} />
@@ -132,7 +151,9 @@ const News = () => {
 
       {showForm && (
         <Card>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Create Announcement</h3>
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">
+            {editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}
+          </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4">
               <div>
@@ -159,7 +180,7 @@ const News = () => {
             </div>
             <div className="flex justify-end space-x-2">
               <button type="submit" className="btn btn-primary" disabled={!isAdmin}>
-                Publish
+                {editingAnnouncement ? 'Update' : 'Publish'}
               </button>
               <button type="button" onClick={resetForm} className="btn btn-secondary">
                 Cancel
@@ -193,6 +214,16 @@ const News = () => {
                 <div className="flex flex-col items-end gap-2 mt-1 text-gray-400 sm:flex-row sm:items-center">
                   {isAdmin && (
                     <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(item);
+                        }}
+                        className="btn btn-secondary"
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => {
