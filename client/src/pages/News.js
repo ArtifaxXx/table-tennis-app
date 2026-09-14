@@ -15,6 +15,7 @@ const News = () => {
   const [formData, setFormData] = useState({ title: '', body: '' });
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [expandedIds, setExpandedIds] = useState(new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const didInitRef = useRef(false);
 
   useEffect(() => {
@@ -49,9 +50,9 @@ const News = () => {
 
   const handleDelete = async (id) => {
     if (!isAdmin) return;
-    if (!window.confirm('Delete this announcement?')) return;
     try {
       await axios.delete(`/api/news/${id}`);
+      setConfirmDeleteId(null);
       setExpandedIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -234,16 +235,41 @@ const News = () => {
                       >
                         {item.pinned ? 'Unpin' : 'Pin'}
                       </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(item.id);
-                        }}
-                        className="btn btn-danger"
-                      >
-                        Delete
-                      </button>
+                      {confirmDeleteId === item.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(item.id);
+                            }}
+                            className="btn btn-danger"
+                          >
+                            Confirm delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(null);
+                            }}
+                            className="btn btn-secondary"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(item.id);
+                          }}
+                          className="btn btn-danger"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </>
                   )}
                   {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}

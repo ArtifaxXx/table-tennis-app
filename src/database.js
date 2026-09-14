@@ -2,6 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const TEAM_CLUB_ADDRESSES = {
   'Arklow': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
@@ -65,6 +66,20 @@ class Database {
         ['admin_password', initial]
       );
     }
+  }
+
+  async ensureInitialAdminUser() {
+    const row = await this.get('SELECT COUNT(*) AS c FROM admin_users');
+    if (row && row.c > 0) return;
+
+    const setting = await this.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
+    const password = (setting && setting.value) || process.env.ADMIN_PASSWORD || '123';
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+    await this.run(
+      'INSERT INTO admin_users (id, name, password_hash) VALUES (?, ?, ?)',
+      [uuidv4(), 'admin', hash]
+    );
   }
 
   async ensureFixturesForfeitColumns() {
@@ -160,6 +175,16 @@ class Database {
     }
   }
 
+  async ensureActivityLogActorColumn() {
+    const columns = await this.all('PRAGMA table_info(activity_logs)');
+    if (!columns || columns.length === 0) return;
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    if (!columnNames.has('actor')) {
+      await this.run('ALTER TABLE activity_logs ADD COLUMN actor TEXT');
+    }
+  }
+
   async initialize() {
     return new Promise((resolve, reject) => {
        const dbDir = path.dirname(this.dbPath);
@@ -204,10 +229,20 @@ class Database {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
 
+      `CREATE TABLE IF NOT EXISTS admin_users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
       `CREATE TABLE IF NOT EXISTS activity_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_type TEXT NOT NULL,
         action TEXT,
+        actor TEXT,
         entity TEXT,
         entity_id TEXT,
         details TEXT,
@@ -455,10 +490,16 @@ class Database {
     // Ensure news.pinned exists for older databases.
     await this.ensureNewsPinnedColumn();
 
+    // Ensure activity_logs.actor exists for older databases.
+    await this.ensureActivityLogActorColumn();
+
     await this.ensureDefaultDivisionBackfill();
 
     // Ensure app settings exist and default admin password is persisted.
     await this.ensureDefaultAdminPassword();
+
+    // Seed the first admin account from the legacy shared password when the table is empty.
+    await this.ensureInitialAdminUser();
   }
 
   async migrateGameSetNaming() {

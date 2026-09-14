@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper } from 'lucide-react';
+import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper, ScrollText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
 const ADMIN_PASSWORD_KEY = 'tt-league:adminPassword:v1';
+const ADMIN_NAME_KEY = 'tt-league:adminName:v1';
 
 const Navbar = () => {
   const location = useLocation();
@@ -16,6 +17,82 @@ const Navbar = () => {
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [resetTargetId, setResetTargetId] = useState(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmRestore, setConfirmRestore] = useState(false);
+
+  const getStoredAdminName = () => {
+    try {
+      return window.localStorage.getItem(ADMIN_NAME_KEY) || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const fetchAdminUsers = async () => {
+    try {
+      const r = await axios.get('/api/admin/users');
+      setAdminUsers(r.data || []);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (authOpen && role === 'admin') {
+      fetchAdminUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authOpen, role]);
+
+  const addAdminUser = async () => {
+    setAuthLoading(true);
+    try {
+      await axios.post('/api/admin/users', { name: newAdminName.trim(), password: newAdminPassword });
+      setNewAdminName('');
+      setNewAdminPassword('');
+      await fetchAdminUsers();
+      toast.success('Admin account created');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const removeAdminUser = async (user) => {
+    setAuthLoading(true);
+    try {
+      await axios.delete(`/api/admin/users/${user.id}`);
+      setConfirmDeleteId(null);
+      await fetchAdminUsers();
+      toast.success('Admin account removed');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const resetAdminUserPassword = async (user) => {
+    if (!resetPasswordInput.trim()) return;
+    setAuthLoading(true);
+    try {
+      await axios.put(`/api/admin/users/${user.id}`, { password: resetPasswordInput.trim() });
+      setResetTargetId(null);
+      setResetPasswordInput('');
+      toast.success('Password updated');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
   const [authLoading, setAuthLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -43,7 +120,6 @@ const Navbar = () => {
 
   const restorePremierSnapshot = async () => {
     if (restoreLoading) return;
-    if (!window.confirm('Restore the Premier Division snapshot now? This will overwrite the current database.')) return;
 
     setRestoreLoading(true);
     try {
@@ -54,6 +130,7 @@ const Navbar = () => {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
       setRestoreLoading(false);
+      setConfirmRestore(false);
     }
   };
 
@@ -84,6 +161,11 @@ const Navbar = () => {
   const openAuth = () => {
     setPasswordInput('');
     setNewPassword('');
+    try {
+      setNameInput(window.localStorage.getItem(ADMIN_NAME_KEY) || '');
+    } catch (e) {
+      setNameInput('');
+    }
     setAuthOpen(true);
   };
 
@@ -96,24 +178,22 @@ const Navbar = () => {
   const enableAdmin = async () => {
     setAuthLoading(true);
     try {
-      window.localStorage.setItem(ADMIN_PASSWORD_KEY, passwordInput);
-      await refreshRole();
-      const now = await axios.get('/api/auth/role');
-      if (now?.data?.role !== 'admin') {
-        window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
-        setRole('viewer');
-        toast.error('Incorrect password');
+      const name = nameInput.trim();
+      const r = await axios.post('/api/auth/login', { password: passwordInput, name });
+      if (r?.data?.role !== 'admin') {
+        toast.error('Incorrect name or password');
         return;
       }
+      window.localStorage.setItem(ADMIN_PASSWORD_KEY, passwordInput);
+      window.localStorage.setItem(ADMIN_NAME_KEY, r.data.name || name);
+      await refreshRole();
       closeAuth();
     } catch (e) {
-      try {
-        window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
-      } catch (ignore) {
-        // ignore
+      if (e?.response?.status === 401) {
+        toast.error('Incorrect name or password');
+      } else {
+        toast.error(e?.response?.data?.error || e.message);
       }
-      setRole('viewer');
-      toast.error(e?.response?.data?.error || e.message);
     } finally {
       setAuthLoading(false);
     }
@@ -122,6 +202,17 @@ const Navbar = () => {
   const disableAdmin = async () => {
     setAuthLoading(true);
     try {
+      let name = '';
+      try {
+        name = window.localStorage.getItem(ADMIN_NAME_KEY) || '';
+      } catch (ignore) {
+        // ignore
+      }
+      try {
+        await axios.post('/api/auth/logout', { name });
+      } catch (ignore) {
+        // ignore
+      }
       window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
       await refreshRole();
       closeAuth();
@@ -142,7 +233,10 @@ const Navbar = () => {
     { path: '/cup', label: 'Cup', icon: Trophy },
     { path: '/player-rankings', label: 'Player Rankings', icon: BarChart3 },
     { path: '/seasons', label: 'Seasons', icon: Archive },
+    { path: '/activity', label: 'Activity', icon: ScrollText, adminOnly: true },
   ];
+
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || role === 'admin');
 
   return (
     <nav className="bg-white shadow-lg">
@@ -190,7 +284,7 @@ const Navbar = () => {
           </div>
 
           <div className="mt-3 hidden md:flex items-center gap-2 flex-wrap">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
 
@@ -212,7 +306,7 @@ const Navbar = () => {
           {mobileOpen && (
             <div className="md:hidden mt-3 border-t pt-3">
               <div className="grid grid-cols-1 gap-2">
-                {navItems.map((item) => {
+                {visibleNavItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
 
@@ -247,10 +341,12 @@ const Navbar = () => {
 
             {role === 'admin' ? (
               <div className="space-y-4">
-                <div className="text-sm text-gray-700">You are currently signed in as admin.</div>
+                <div className="text-sm text-gray-700">
+                  You are currently signed in as admin{getStoredAdminName() ? ` — ${getStoredAdminName()}` : ''}.
+                </div>
 
                 <div className="border-t pt-4 space-y-2">
-                  <div className="text-sm font-semibold text-gray-800">Change admin password</div>
+                  <div className="text-sm font-semibold text-gray-800">Change my password</div>
                   <input
                     className="input w-full"
                     type="password"
@@ -270,19 +366,156 @@ const Navbar = () => {
                   </div>
                 </div>
 
+                <div className="border-t pt-4 space-y-2">
+                  <div className="text-sm font-semibold text-gray-800">Admin accounts</div>
+                  <div className="space-y-2">
+                    {adminUsers.map((user) => (
+                      <div key={user.id} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-800">
+                            {user.name}
+                            {user.name === getStoredAdminName() ? ' (you)' : ''}
+                          </span>
+                          {resetTargetId !== user.id && confirmDeleteId !== user.id && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                  setResetTargetId(user.id);
+                                  setResetPasswordInput('');
+                                }}
+                                disabled={authLoading}
+                              >
+                                Reset password
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                onClick={() => setConfirmDeleteId(user.id)}
+                                disabled={authLoading || user.name === getStoredAdminName()}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          )}
+                          {confirmDeleteId === user.id && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-xs text-gray-600">Remove account?</span>
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                onClick={() => removeAdminUser(user)}
+                                disabled={authLoading}
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setConfirmDeleteId(null)}
+                                disabled={authLoading}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {resetTargetId === user.id && (
+                          <div className="mt-2 flex gap-2">
+                            <input
+                              className="input flex-1"
+                              type="password"
+                              value={resetPasswordInput}
+                              onChange={(e) => setResetPasswordInput(e.target.value)}
+                              placeholder={`New password for ${user.name}`}
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => resetAdminUserPassword(user)}
+                              disabled={authLoading || resetPasswordInput.trim().length < 3}
+                            >
+                              Set
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => {
+                                setResetTargetId(null);
+                                setResetPasswordInput('');
+                              }}
+                              disabled={authLoading}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      className="input flex-1"
+                      type="text"
+                      value={newAdminName}
+                      onChange={(e) => setNewAdminName(e.target.value)}
+                      placeholder="Name"
+                    />
+                    <input
+                      className="input flex-1"
+                      type="password"
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                      placeholder="Password"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={addAdminUser}
+                      disabled={authLoading || !newAdminName.trim() || newAdminPassword.length < 3}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
                 <div className="border-t pt-4 space-y-4">
                   <div>
                     <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
                     <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
-                    <div className="flex justify-end">
-                      <button
-                        className="btn btn-primary"
-                        type="button"
-                        onClick={restorePremierSnapshot}
-                        disabled={authLoading || restoreLoading}
-                      >
-                        {restoreLoading ? 'Restoring...' : 'Restore Premier Snapshot'}
-                      </button>
+                    <div className="flex justify-end gap-2">
+                      {confirmRestore ? (
+                        <>
+                          <span className="text-xs text-gray-600 self-center">Overwrite the current database?</span>
+                          <button
+                            className="btn btn-danger"
+                            type="button"
+                            onClick={restorePremierSnapshot}
+                            disabled={authLoading || restoreLoading}
+                          >
+                            {restoreLoading ? 'Restoring...' : 'Confirm restore'}
+                          </button>
+                          <button
+                            className="btn"
+                            type="button"
+                            onClick={() => setConfirmRestore(false)}
+                            disabled={authLoading || restoreLoading}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          onClick={() => setConfirmRestore(true)}
+                          disabled={authLoading || restoreLoading}
+                        >
+                          Restore Premier Snapshot
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -298,14 +531,21 @@ const Navbar = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="text-sm text-gray-700">Enter admin password to enable editing.</div>
+                <div className="text-sm text-gray-700">Sign in with your admin name and password to enable editing. Your actions are recorded in the activity log.</div>
+                <input
+                  className="input w-full"
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="Admin name"
+                  autoFocus
+                />
                 <input
                   className="input w-full"
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   placeholder="Admin password"
-                  autoFocus
                 />
                 <div className="flex justify-end gap-2">
                   <button className="btn" type="button" onClick={closeAuth} disabled={authLoading}>
@@ -315,7 +555,7 @@ const Navbar = () => {
                     className="btn btn-primary"
                     type="button"
                     onClick={enableAdmin}
-                    disabled={authLoading || !passwordInput}
+                    disabled={authLoading || !passwordInput || !nameInput.trim()}
                   >
                     Enable Admin
                   </button>
@@ -345,7 +585,7 @@ const Navbar = () => {
                 This is just a prototype that is actively developped and on a free hosting for now
               </div>
               <div>
-                To get admin rights click profile icon at the top right and put in <span className="font-semibold">"555"</span> as password.
+                To get admin rights click the profile icon at the top right and sign in with your admin name and password.
               </div>
               <div>
                 To get more real data with current Prem division state - click <span className="font-semibold">"Restore Premiere snapshot"</span>

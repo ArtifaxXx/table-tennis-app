@@ -4,6 +4,9 @@ const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const { v4: uuidv4 } = require('uuid');
 const Database = require('./database');
 const PlayerManager = require('./models/player');
 const MatchManager = require('./models/match');
@@ -18,10 +21,41 @@ const { seedDatabase } = require('./seed');
 const { populateRealData } = require('./realData');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
-let currentAdminPassword = null;
 let isSeeding = false;
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// name + password pair -> canonical admin name (or null for invalid credentials)
+const adminCredentialCache = new Map();
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hex] = String(stored || '').split(':');
+  if (!salt || !hex) return false;
+  const expected = Buffer.from(hex, 'hex');
+  const actual = crypto.scryptSync(String(password), salt, 64);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, try again later' },
+});
+
+const trackLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
 let visitorLogDate = new Date().toISOString().slice(0, 10);
 const visitorLogCache = new Set();
 
@@ -51,15 +85,34 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use((req, res, next) => {
-  if (!currentAdminPassword) {
+app.use(async (req, res, next) => {
+  try {
     req.role = 'viewer';
-    return next();
-  }
+    req.actorName = null;
 
-  const password = req.get('X-Admin-Password');
-  req.role = password && password === currentAdminPassword ? 'admin' : 'viewer';
-  next();
+    const headerName = req.get('X-Admin-Name');
+    const password = req.get('X-Admin-Password');
+    const name = headerName ? headerName.trim().slice(0, 60) : '';
+    if (!name || !password) return next();
+
+    const cacheKey = JSON.stringify([name, password]);
+    let canonical = adminCredentialCache.get(cacheKey);
+    if (canonical === undefined) {
+      const user = await db.get(
+        'SELECT name, password_hash FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+        [name]
+      );
+      canonical = user && verifyPassword(password, user.password_hash) ? user.name : null;
+      adminCredentialCache.set(cacheKey, canonical);
+    }
+    if (canonical) {
+      req.role = 'admin';
+      req.actorName = canonical;
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.use(helmet());
@@ -136,7 +189,7 @@ function parseEntityFromPath(pathname) {
   const trimmed = pathname.replace(/^\/api\//, '');
   if (!trimmed) return null;
   const [entity, entityId, actionSuffix] = trimmed.split('/');
-  if (!entity || entity === 'admin' || entity === 'auth') return null;
+  if (!entity || entity === 'auth' || entity === 'track') return null;
   return {
     entity,
     entityId: entityId || null,
@@ -144,15 +197,17 @@ function parseEntityFromPath(pathname) {
   };
 }
 
-async function logActivity({ eventType, action, entity, entityId, details, req }) {
+async function logActivity({ eventType, action, entity, entityId, details, req, actor }) {
   try {
     const payload = details ? JSON.stringify(details) : null;
+    const actorName = actor || req?.actorName || req?.role || null;
     await db.run(
-      `INSERT INTO activity_logs (event_type, action, entity, entity_id, details, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO activity_logs (event_type, action, actor, entity, entity_id, details, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         eventType,
         action || null,
+        actorName,
         entity || null,
         entityId || null,
         payload,
@@ -200,7 +255,105 @@ function requireSeedToken(req, res, next) {
 
 // API Routes
 app.get('/api/auth/role', async (req, res) => {
-  res.json({ role: req.role || 'viewer' });
+  res.json({ role: req.role || 'viewer', name: req.role === 'admin' ? req.actorName : null });
+});
+
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  try {
+    const name = req.body && typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 60) : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+    const user = name && password
+      ? await db.get(
+          'SELECT name, password_hash FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+          [name]
+        )
+      : null;
+    const ok = !!(user && verifyPassword(password, user.password_hash));
+
+    await logActivity({
+      eventType: 'auth',
+      action: ok ? 'login' : 'login_failed',
+      entity: 'auth',
+      details: { name: name || null },
+      req,
+      actor: ok ? user.name : name || 'viewer',
+    });
+
+    if (!ok) return res.status(401).json({ role: 'viewer' });
+    adminCredentialCache.set(JSON.stringify([name, password]), user.name);
+    return res.json({ role: 'admin', name: user.name });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  const name = req.body && typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 60) : '';
+  await logActivity({
+    eventType: 'auth',
+    action: 'logout',
+    entity: 'auth',
+    req,
+    actor: name || req.actorName || req.role,
+  });
+  res.json({ ok: true });
+});
+
+app.post('/api/track', trackLimiter, async (req, res) => {
+  const pagePath = req.body && typeof req.body.path === 'string' ? req.body.path.slice(0, 300) : null;
+  if (pagePath && pagePath.startsWith('/') && !pagePath.startsWith('//')) {
+    const dateKey = resetVisitorLogCacheIfNeeded();
+    const visitorKey = `${dateKey}:${req.ip}:${req.get('user-agent') || ''}:${pagePath}`;
+    if (!visitorLogCache.has(visitorKey)) {
+      visitorLogCache.add(visitorKey);
+      void logActivity({
+        eventType: 'visit',
+        action: 'page_view',
+        entity: 'site',
+        details: { path: pagePath },
+        req,
+      });
+    }
+  }
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const where = [];
+    const params = [];
+
+    if (req.query.eventType) {
+      where.push('event_type = ?');
+      params.push(req.query.eventType);
+    }
+    if (req.query.entity) {
+      where.push('entity = ?');
+      params.push(req.query.entity);
+    }
+    if (req.query.actor) {
+      where.push('actor = ?');
+      params.push(req.query.actor);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const rows = await db.all(
+      `SELECT id, event_type, action, actor, entity, entity_id, details, ip_address, user_agent, created_at
+       FROM activity_logs ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json(
+      rows.map((row) => ({
+        ...row,
+        details: row.details ? JSON.parse(row.details) : null,
+      }))
+    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
@@ -212,15 +365,114 @@ app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
     if (nextPassword.trim().length < 3) {
       throw new Error('Password must be at least 3 characters');
     }
+    if (!req.actorName) {
+      throw new Error('No admin account associated with this session');
+    }
 
     await db.run(
-      `UPDATE app_settings
-       SET value = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE key = ?`,
-      [nextPassword.trim(), 'admin_password']
+      'UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?',
+      [hashPassword(nextPassword.trim()), req.actorName]
     );
-    currentAdminPassword = nextPassword.trim();
+    adminCredentialCache.clear();
 
+    await logActivity({
+      eventType: 'auth',
+      action: 'password_change',
+      entity: 'auth',
+      req,
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.all(
+      'SELECT id, name, created_at FROM admin_users WHERE active = 1 ORDER BY name'
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const name = req.body && typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 60) : '';
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password.trim() : '';
+    if (!name) throw new Error('name is required');
+    if (password.length < 3) throw new Error('Password must be at least 3 characters');
+
+    const existing = await db.get('SELECT id FROM admin_users WHERE lower(name) = lower(?)', [name]);
+    if (existing) throw new Error('An admin with that name already exists');
+
+    await db.run(
+      'INSERT INTO admin_users (id, name, password_hash) VALUES (?, ?, ?)',
+      [uuidv4(), name, hashPassword(password)]
+    );
+    adminCredentialCache.clear();
+    await logActivity({
+      eventType: 'edit',
+      action: 'create_admin',
+      entity: 'admin_users',
+      details: { name },
+      req,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const password = req.body && typeof req.body.password === 'string' ? req.body.password.trim() : '';
+    if (password.length < 3) throw new Error('Password must be at least 3 characters');
+
+    const target = await db.get('SELECT id, name FROM admin_users WHERE id = ?', [req.params.id]);
+    if (!target) throw new Error('Admin user not found');
+
+    await db.run(
+      'UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [hashPassword(password), target.id]
+    );
+    adminCredentialCache.clear();
+    await logActivity({
+      eventType: 'edit',
+      action: 'reset_admin_password',
+      entity: 'admin_users',
+      entityId: target.id,
+      details: { name: target.name },
+      req,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const target = await db.get('SELECT id, name FROM admin_users WHERE id = ?', [req.params.id]);
+    if (!target) throw new Error('Admin user not found');
+    if (target.name === req.actorName) throw new Error('You cannot delete your own account');
+
+    const count = await db.get('SELECT COUNT(*) AS c FROM admin_users WHERE active = 1');
+    if (count && count.c <= 1) throw new Error('Cannot delete the last admin account');
+
+    await db.run('DELETE FROM admin_users WHERE id = ?', [target.id]);
+    adminCredentialCache.clear();
+    await logActivity({
+      eventType: 'edit',
+      action: 'delete_admin',
+      entity: 'admin_users',
+      entityId: target.id,
+      details: { name: target.name },
+      req,
+    });
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -1047,9 +1299,6 @@ async function startServer() {
     await db.initialize();
     console.log('Database initialized successfully');
 
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
-    currentAdminPassword = row && row.value ? String(row.value) : '123';
-    
     app.listen(PORT, () => {
       console.log(`Table Tennis League API running on port ${PORT}`);
     });

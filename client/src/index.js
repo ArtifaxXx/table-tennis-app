@@ -6,13 +6,16 @@ import './index.css';
 import App from './App';
 
 const ADMIN_PASSWORD_KEY = 'tt-league:adminPassword:v1';
+const ADMIN_NAME_KEY = 'tt-league:adminName:v1';
 
 axios.interceptors.request.use((config) => {
   try {
     const password = window.localStorage.getItem(ADMIN_PASSWORD_KEY);
-    if (password) {
+    const name = window.localStorage.getItem(ADMIN_NAME_KEY);
+    if (password || name) {
       config.headers = config.headers || {};
-      config.headers['X-Admin-Password'] = password;
+      if (password) config.headers['X-Admin-Password'] = password;
+      if (name) config.headers['X-Admin-Name'] = name;
     }
   } catch (e) {
     // ignore

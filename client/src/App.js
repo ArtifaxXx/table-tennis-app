@@ -1,5 +1,6 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import axios from 'axios';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import News from './pages/News';
@@ -11,11 +12,20 @@ import TeamStandings from './pages/TeamStandings';
 import PlayerRankings from './pages/PlayerRankings';
 import Cup from './pages/Cup';
 import Seasons from './pages/Seasons';
+import ActivityLog from './pages/ActivityLog';
 import { DivisionProvider } from './context/DivisionContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import ToastViewport from './components/ToastViewport';
 import BuildInfoWidget from './components/BuildInfoWidget';
+
+const RouteTracker = () => {
+  const location = useLocation();
+  useEffect(() => {
+    axios.post('/api/track', { path: location.pathname }).catch(() => {});
+  }, [location.pathname]);
+  return null;
+};
 
 function App() {
   return (
@@ -23,6 +33,7 @@ function App() {
       <AuthProvider>
         <DivisionProvider>
           <div className="min-h-screen bg-gray-50">
+            <RouteTracker />
             <Navbar />
             <main className="container mx-auto px-4 py-8">
               <Routes>
@@ -36,6 +47,7 @@ function App() {
                 <Route path="/cup" element={<Cup />} />
                 <Route path="/player-rankings" element={<PlayerRankings />} />
                 <Route path="/seasons" element={<Seasons />} />
+                <Route path="/activity" element={<ActivityLog />} />
               </Routes>
             </main>
             <footer className="fixed bottom-4 left-4 z-40 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
