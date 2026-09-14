@@ -11,7 +11,10 @@
     "snapshot-db": "node src/snapshot-db.js",
     "save-prem-snapshot": "node src/save-db-snapshot.js prem-division",
     "restore-prem-snapshot": "node src/restore-db-snapshot.js prem-division --yes",
-    "test": "jest",
+    "test": "node scripts/test-all.js",
+    "test:server": "jest",
+    "test:client": "npm --prefix client test -- --watchAll=false",
+    "test:coverage": "jest --coverage",
     "build": "npm run build:client && npm run build:server",
     "build:client": "cd client && npm run build",
     "build:server": "echo 'Server build complete'",
@@ -37,6 +40,7 @@
   },
   "devDependencies": {
     "jest": "^29.6.2",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "supertest": "^7.2.2"
   }
 }

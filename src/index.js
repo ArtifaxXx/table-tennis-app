@@ -1293,21 +1293,25 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Initialize database and start server
-async function startServer() {
-  try {
-    await db.initialize();
-    console.log('Database initialized successfully');
+// Initialize database. The exported promise lets tests wait for readiness;
+// the HTTP listener only starts when this file is run directly.
+const ready = db.initialize().then(() => {
+  console.log('Database initialized successfully');
+});
 
-    app.listen(PORT, () => {
-      console.log(`Table Tennis League API running on port ${PORT}`);
+if (require.main === module) {
+  ready
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Table Tennis League API running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to start server:', error);
+      process.exit(1);
     });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
 }
 
-startServer();
-
 module.exports = app;
+module.exports.ready = ready;
+module.exports.db = db;
