@@ -19,7 +19,7 @@ jobs:
         run: npm ci
 
       - name: Install client dependencies
-        run: npm --prefix client ci
+        run: npm --prefix client install --no-audit --no-fund
 
       - name: Run all tests
         run: npm test
