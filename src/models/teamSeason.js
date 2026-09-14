@@ -257,10 +257,10 @@ class TeamSeasonManager {
     await this.db.run('BEGIN TRANSACTION');
     try {
       await this.db.run(
-        `DELETE FROM fixture_game_sets
-         WHERE fixture_game_id IN (
+        `DELETE FROM fixture_match_games
+         WHERE fixture_match_id IN (
            SELECT fg.id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON f.id = fg.fixture_id
            WHERE f.team_season_id = ?
          )`,
@@ -268,7 +268,7 @@ class TeamSeasonManager {
       );
 
       await this.db.run(
-        `DELETE FROM fixture_games
+        `DELETE FROM fixture_matches
          WHERE fixture_id IN (
            SELECT id FROM fixtures WHERE team_season_id = ?
          )`,

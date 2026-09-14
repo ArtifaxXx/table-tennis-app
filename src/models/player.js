@@ -42,9 +42,9 @@ class PlayerManager {
           END
         ) as losses
       FROM players p
-      LEFT JOIN fixture_games fg
+      LEFT JOIN fixture_matches fg
         ON (p.id = fg.home_player_a_id OR p.id = fg.away_player_a_id)
-       AND fg.game_type = 'singles'
+       AND fg.match_type = 'singles'
        AND fg.winner_side IN ('home','away')
       LEFT JOIN fixtures f
         ON fg.fixture_id = f.id
@@ -64,10 +64,10 @@ class PlayerManager {
          SELECT fg.home_player_a_id as player_id,
                 CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_wins,
                 CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_losses
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
@@ -75,10 +75,10 @@ class PlayerManager {
          SELECT fg.home_player_b_id as player_id,
                 CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_wins,
                 CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_losses
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.home_player_b_id IS NOT NULL
 
@@ -87,10 +87,10 @@ class PlayerManager {
          SELECT fg.away_player_a_id as player_id,
                 CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_wins,
                 CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_losses
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
@@ -98,10 +98,10 @@ class PlayerManager {
          SELECT fg.away_player_b_id as player_id,
                 CASE WHEN fg.winner_side = 'away' THEN 1 ELSE 0 END as doubles_wins,
                 CASE WHEN fg.winner_side = 'home' THEN 1 ELSE 0 END as doubles_losses
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.away_player_b_id IS NOT NULL
        ) t
@@ -111,64 +111,64 @@ class PlayerManager {
 
     const doublesMap = new Map(doublesByPlayer.map((r) => [r.player_id, r]));
 
-    const setsByPlayer = await this.db.all(
+    const gamesByPlayer = await this.db.all(
       `SELECT player_id,
-              SUM(sets_won) as sets_won,
-              SUM(sets_lost) as sets_lost
+              SUM(games_won) as games_won,
+              SUM(games_lost) as games_lost
        FROM (
          SELECT
            fg.home_player_a_id as player_id,
-           COALESCE(fg.home_sets_won, 0) as sets_won,
-           COALESCE(fg.away_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.home_games_won, 0) as games_won,
+           COALESCE(fg.away_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
 
          SELECT
            fg.away_player_a_id as player_id,
-           COALESCE(fg.away_sets_won, 0) as sets_won,
-           COALESCE(fg.home_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.away_games_won, 0) as games_won,
+           COALESCE(fg.home_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
        ) t
        GROUP BY player_id`,
       []
     );
 
-    const setsMap = new Map(setsByPlayer.map((r) => [r.player_id, r]));
+    const gamesMap = new Map(gamesByPlayer.map((r) => [r.player_id, r]));
 
-    const doublesSetsByPlayer = await this.db.all(
+    const doublesGamesByPlayer = await this.db.all(
       `SELECT player_id,
-              SUM(sets_won) as sets_won,
-              SUM(sets_lost) as sets_lost
+              SUM(games_won) as games_won,
+              SUM(games_lost) as games_lost
        FROM (
          SELECT
            fg.home_player_a_id as player_id,
-           COALESCE(fg.home_sets_won, 0) as sets_won,
-           COALESCE(fg.away_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.home_games_won, 0) as games_won,
+           COALESCE(fg.away_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
 
          SELECT
            fg.home_player_b_id as player_id,
-           COALESCE(fg.home_sets_won, 0) as sets_won,
-           COALESCE(fg.away_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.home_games_won, 0) as games_won,
+           COALESCE(fg.away_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.home_player_b_id IS NOT NULL
 
@@ -176,24 +176,24 @@ class PlayerManager {
 
          SELECT
            fg.away_player_a_id as player_id,
-           COALESCE(fg.away_sets_won, 0) as sets_won,
-           COALESCE(fg.home_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.away_games_won, 0) as games_won,
+           COALESCE(fg.home_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
 
          SELECT
            fg.away_player_b_id as player_id,
-           COALESCE(fg.away_sets_won, 0) as sets_won,
-           COALESCE(fg.home_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.away_games_won, 0) as games_won,
+           COALESCE(fg.home_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.away_player_b_id IS NOT NULL
        ) t
@@ -202,7 +202,7 @@ class PlayerManager {
       []
     );
 
-    const doublesSetsMap = new Map(doublesSetsByPlayer.map((r) => [r.player_id, r]));
+    const doublesGamesMap = new Map(doublesGamesByPlayer.map((r) => [r.player_id, r]));
 
     const singlesPointsByPlayer = await this.db.all(
       `SELECT player_id,
@@ -213,11 +213,11 @@ class PlayerManager {
            fg.home_player_a_id as player_id,
            COALESCE(gs.home_points, 0) as points_won,
            COALESCE(gs.away_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
@@ -226,11 +226,11 @@ class PlayerManager {
            fg.away_player_a_id as player_id,
            COALESCE(gs.away_points, 0) as points_won,
            COALESCE(gs.home_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
        ) t
        WHERE player_id IS NOT NULL
@@ -249,11 +249,11 @@ class PlayerManager {
            fg.home_player_a_id as player_id,
            COALESCE(gs.home_points, 0) as points_won,
            COALESCE(gs.away_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
@@ -262,11 +262,11 @@ class PlayerManager {
            fg.home_player_b_id as player_id,
            COALESCE(gs.home_points, 0) as points_won,
            COALESCE(gs.away_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.home_player_b_id IS NOT NULL
 
@@ -276,11 +276,11 @@ class PlayerManager {
            fg.away_player_a_id as player_id,
            COALESCE(gs.away_points, 0) as points_won,
            COALESCE(gs.home_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
 
          UNION ALL
@@ -289,11 +289,11 @@ class PlayerManager {
            fg.away_player_b_id as player_id,
            COALESCE(gs.away_points, 0) as points_won,
            COALESCE(gs.home_points, 0) as points_lost
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
-         LEFT JOIN fixture_game_sets gs ON gs.fixture_game_id = fg.id
+         LEFT JOIN fixture_match_games gs ON gs.fixture_match_id = fg.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'doubles'
+           AND fg.match_type = 'doubles'
            AND fg.winner_side IN ('home','away')
            AND fg.away_player_b_id IS NOT NULL
        ) t
@@ -305,9 +305,9 @@ class PlayerManager {
     const doublesPointsMap = new Map(doublesPointsByPlayer.map((r) => [r.player_id, r]));
 
     return players.map((player) => {
-      const s = setsMap.get(player.id) || { sets_won: 0, sets_lost: 0 };
+      const s = gamesMap.get(player.id) || { games_won: 0, games_lost: 0 };
       const d = doublesMap.get(player.id) || { doubles_wins: 0, doubles_losses: 0 };
-      const ds = doublesSetsMap.get(player.id) || { sets_won: 0, sets_lost: 0 };
+      const ds = doublesGamesMap.get(player.id) || { games_won: 0, games_lost: 0 };
       const sp = singlesPointsMap.get(player.id) || { points_won: 0, points_lost: 0 };
       const dp = doublesPointsMap.get(player.id) || { points_won: 0, points_lost: 0 };
 
@@ -335,8 +335,8 @@ class PlayerManager {
         singles_wins: singlesWins,
         singles_losses: singlesLosses,
         singles_win_pct: singlesWinPct,
-        singles_sets_won: s.sets_won || 0,
-        singles_sets_lost: s.sets_lost || 0,
+        singles_games_won: s.games_won || 0,
+        singles_games_lost: s.games_lost || 0,
         singles_points_won: sp.points_won || 0,
         singles_points_lost: sp.points_lost || 0,
         win_rate: singlesWinPct,
@@ -344,8 +344,8 @@ class PlayerManager {
         doubles_losses: doublesLosses,
         doubles_played: doublesPlayed,
         doubles_win_pct: doublesPlayed > 0 ? ((doublesWins / doublesPlayed) * 100).toFixed(1) : 0,
-        doubles_sets_won: ds.sets_won || 0,
-        doubles_sets_lost: ds.sets_lost || 0,
+        doubles_games_won: ds.games_won || 0,
+        doubles_games_lost: ds.games_lost || 0,
         doubles_points_won: dp.points_won || 0,
         doubles_points_lost: dp.points_lost || 0,
       };
@@ -372,9 +372,9 @@ class PlayerManager {
           END
         ) as losses
       FROM players p
-      LEFT JOIN fixture_games fg
+      LEFT JOIN fixture_matches fg
         ON (p.id = fg.home_player_a_id OR p.id = fg.away_player_a_id)
-       AND fg.game_type = 'singles'
+       AND fg.match_type = 'singles'
        AND fg.winner_side IN ('home','away')
       LEFT JOIN fixtures f
         ON fg.fixture_id = f.id
@@ -386,30 +386,30 @@ class PlayerManager {
     const player = await this.db.get(sql, [id]);
     if (!player) return null;
 
-    const sets = await this.db.get(
+    const games = await this.db.get(
       `SELECT
-         SUM(sets_won) as sets_won,
-         SUM(sets_lost) as sets_lost
+         SUM(games_won) as games_won,
+         SUM(games_lost) as games_lost
        FROM (
          SELECT
-           COALESCE(fg.home_sets_won, 0) as sets_won,
-           COALESCE(fg.away_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.home_games_won, 0) as games_won,
+           COALESCE(fg.away_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
            AND fg.home_player_a_id = ?
 
          UNION ALL
 
          SELECT
-           COALESCE(fg.away_sets_won, 0) as sets_won,
-           COALESCE(fg.home_sets_won, 0) as sets_lost
-         FROM fixture_games fg
+           COALESCE(fg.away_games_won, 0) as games_won,
+           COALESCE(fg.home_games_won, 0) as games_lost
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
            AND fg.away_player_a_id = ?
        ) t`,
@@ -418,8 +418,8 @@ class PlayerManager {
     
     return {
       ...player,
-      singles_sets_won: sets?.sets_won || 0,
-      singles_sets_lost: sets?.sets_lost || 0,
+      singles_games_won: games?.games_won || 0,
+      singles_games_lost: games?.games_lost || 0,
       win_rate: player.total_matches > 0 ? ((player.wins / player.total_matches) * 100).toFixed(1) : 0
     };
   }

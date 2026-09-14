@@ -212,15 +212,15 @@ const Dashboard = () => {
       complete: 'bg-green-50 text-green-800 border-green-200',
       violation: 'bg-red-50 text-red-800 border-red-200',
       missing_lineups: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_matches: 'bg-gray-50 text-gray-700 border-gray-200',
       missing_games: 'bg-gray-50 text-gray-700 border-gray-200',
-      missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
     };
     const labels = {
       complete: 'Correct',
       violation: 'Violation',
       missing_lineups: 'Lineups',
+      missing_matches: 'Matches',
       missing_games: 'Games',
-      missing_sets: 'Sets',
     };
     if (!c) return null;
 
@@ -370,12 +370,12 @@ const Dashboard = () => {
                         <span className="font-medium text-gray-800">{team.team_name}</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {team.wins}W / {team.losses}L · Games {team.games_won}-{team.games_lost}
+                        {team.wins}W / {team.losses}L · Matches {team.matches_won}-{team.matches_lost}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-gray-500">Games diff</div>
-                      <div className="text-sm font-semibold text-gray-800">{team.games_won - team.games_lost}</div>
+                      <div className="text-xs text-gray-500">Matches diff</div>
+                      <div className="text-sm font-semibold text-gray-800">{team.matches_won - team.matches_lost}</div>
                     </div>
                   </Link>
                 ))}

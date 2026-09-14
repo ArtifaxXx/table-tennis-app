@@ -81,10 +81,10 @@ const TeamStandings = () => {
                 <th className="cursor-pointer" onClick={() => requestSort('played')}>P{sortIndicator(sortConfig, 'played')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('wins')}>W{sortIndicator(sortConfig, 'wins')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('losses')}>L{sortIndicator(sortConfig, 'losses')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('matches_won')}>Matches Won{sortIndicator(sortConfig, 'matches_won')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('matches_lost')}>Matches Lost{sortIndicator(sortConfig, 'matches_lost')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('games_won')}>Games Won{sortIndicator(sortConfig, 'games_won')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('games_lost')}>Games Lost{sortIndicator(sortConfig, 'games_lost')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('sets_won')}>Sets Won{sortIndicator(sortConfig, 'sets_won')}</th>
-                <th className="cursor-pointer" onClick={() => requestSort('sets_lost')}>Sets Lost{sortIndicator(sortConfig, 'sets_lost')}</th>
               </tr>
             </thead>
             <tbody>
@@ -95,10 +95,10 @@ const TeamStandings = () => {
                   <td>{r.played}</td>
                   <td className="text-green-700 font-medium">{r.wins}</td>
                   <td className="text-red-700 font-medium">{r.losses}</td>
+                  <td className="font-medium">{r.matches_won}</td>
+                  <td>{r.matches_lost}</td>
                   <td className="font-medium">{r.games_won}</td>
                   <td>{r.games_lost}</td>
-                  <td className="font-medium">{r.sets_won}</td>
-                  <td>{r.sets_lost}</td>
                 </tr>
               ))}
             </tbody>
@@ -108,7 +108,7 @@ const TeamStandings = () => {
       </Card>
 
       <div className="text-sm text-gray-500">
-        Tie-breakers: wins, games won, head-to-head games won among tied teams, sets won.
+        Tie-breakers: wins, matches won, head-to-head matches won among tied teams, games won.
       </div>
     </div>
   );

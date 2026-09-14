@@ -261,9 +261,9 @@ const Players = () => {
                   </th>
                   <th
                     className="cursor-pointer"
-                    onClick={() => requestSort('singles_sets_won', (p) => getNumber(p.singles_sets_won))}
+                    onClick={() => requestSort('singles_games_won', (p) => getNumber(p.singles_games_won))}
                   >
-                    Singles Sets W/L{sortIndicator(sortConfig, 'singles_sets_won')}
+                    Singles Games W/L{sortIndicator(sortConfig, 'singles_games_won')}
                   </th>
                   <th
                     className="cursor-pointer"
@@ -297,9 +297,9 @@ const Players = () => {
                   </th>
                   <th
                     className="cursor-pointer"
-                    onClick={() => requestSort('doubles_sets_won', (p) => getNumber(p.doubles_sets_won))}
+                    onClick={() => requestSort('doubles_games_won', (p) => getNumber(p.doubles_games_won))}
                   >
-                    Doubles Sets W/L{sortIndicator(sortConfig, 'doubles_sets_won')}
+                    Doubles Games W/L{sortIndicator(sortConfig, 'doubles_games_won')}
                   </th>
                   <th
                     className="cursor-pointer"
@@ -317,16 +317,16 @@ const Players = () => {
                 const singlesWins = getNumber(player.singles_wins ?? player.wins);
                 const singlesLosses = getNumber(player.singles_losses ?? player.losses);
                 const singlesWinPct = getNumber(player.singles_win_pct ?? player.win_rate);
-                const singlesSetsWon = getNumber(player.singles_sets_won);
-                const singlesSetsLost = getNumber(player.singles_sets_lost);
+                const singlesGamesWon = getNumber(player.singles_games_won);
+                const singlesGamesLost = getNumber(player.singles_games_lost);
                 const singlesPointsWon = getNumber(player.singles_points_won);
                 const singlesPointsLost = getNumber(player.singles_points_lost);
                 const doublesPlayed = getNumber(player.doubles_played);
                 const doublesWins = getNumber(player.doubles_wins);
                 const doublesLosses = getNumber(player.doubles_losses);
                 const doublesWinPct = getNumber(player.doubles_win_pct);
-                const doublesSetsWon = getNumber(player.doubles_sets_won);
-                const doublesSetsLost = getNumber(player.doubles_sets_lost);
+                const doublesGamesWon = getNumber(player.doubles_games_won);
+                const doublesGamesLost = getNumber(player.doubles_games_lost);
                 const doublesPointsWon = getNumber(player.doubles_points_won);
                 const doublesPointsLost = getNumber(player.doubles_points_lost);
                 const matchesPlayed = getNumber(player.matches_played ?? (singlesPlayed + doublesPlayed));
@@ -363,9 +363,9 @@ const Players = () => {
                         <td>{singlesLosses}</td>
                         <td>{singlesWinPct.toFixed(1)}%</td>
                         <td>
-                          {singlesSetsWon}
+                          {singlesGamesWon}
                           <span className="text-gray-500">/</span>
-                          {singlesSetsLost}
+                          {singlesGamesLost}
                         </td>
                         <td>
                           {singlesPointsWon}
@@ -377,9 +377,9 @@ const Players = () => {
                         <td>{doublesLosses}</td>
                         <td>{doublesWinPct.toFixed(1)}%</td>
                         <td>
-                          {doublesSetsWon}
+                          {doublesGamesWon}
                           <span className="text-gray-500">/</span>
-                          {doublesSetsLost}
+                          {doublesGamesLost}
                         </td>
                         <td>
                           {doublesPointsWon}

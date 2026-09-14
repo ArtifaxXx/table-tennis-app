@@ -357,7 +357,7 @@ const Navbar = () => {
                   <li>Teams management with contact/home-day details, club addresses, roster slots, search, and admin-only edits.</li>
                   <li>Players management with search, admin-only edits, and read-only detail views for viewers.</li>
                   <li>Season fixtures list with sorting, team filter, and calendar/unscheduled views.</li>
-                  <li>Fixture detail editing: lineups, sets, auto-filled opposing scores, and completeness validation badges.</li>
+                  <li>Fixture detail editing: lineups, games, auto-filled opposing scores, and completeness validation badges.</li>
                   <li>Fixture forfeits with automatic score handling (admin-only).</li>
                   <li>Season/division filters across standings, rankings, fixtures, and cup views.</li>
                   <li>Live standings and player rankings by season/division.</li>

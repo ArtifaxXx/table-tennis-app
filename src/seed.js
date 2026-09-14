@@ -21,12 +21,12 @@ async function seedDatabase(db) {
     return h;
   };
 
-  const makeSets = (winnerSide, variantSeed) => {
-    // Best-of-5, return 3 to 5 sets. Keep it simple but varied.
-    // Always ends when one side reaches 3 sets.
-    const sets = [];
-    let homeSets = 0;
-    let awaySets = 0;
+  const makeGames = (winnerSide, variantSeed) => {
+    // Best-of-5, return 3 to 5 games. Keep it simple but varied.
+    // Always ends when one side reaches 3 games.
+    const games = [];
+    let homeGames = 0;
+    let awayGames = 0;
 
     const pickLoserPoints = (k) => {
       // include a few close/deuce-ish scores to vary results
@@ -40,45 +40,45 @@ async function seedDatabase(db) {
       return options[(variantSeed + k) % options.length];
     };
 
-    let setIndex = 0;
-    while (homeSets < 3 && awaySets < 3 && setIndex < 5) {
-      const winnerThisSet = ((variantSeed + setIndex) % 4 === 0)
+    let gameIndex = 0;
+    while (homeGames < 3 && awayGames < 3 && gameIndex < 5) {
+      const winnerThisGame = ((variantSeed + gameIndex) % 4 === 0)
         ? (winnerSide === 'home' ? 'away' : 'home')
         : winnerSide;
-      const loserPoints = pickLoserPoints(setIndex);
-      const winnerPoints = pickWinnerPoints(setIndex);
+      const loserPoints = pickLoserPoints(gameIndex);
+      const winnerPoints = pickWinnerPoints(gameIndex);
 
-      if (winnerThisSet === 'home') {
-        sets.push({ home_points: winnerPoints, away_points: loserPoints });
-        homeSets++;
+      if (winnerThisGame === 'home') {
+        games.push({ home_points: winnerPoints, away_points: loserPoints });
+        homeGames++;
       } else {
-        sets.push({ home_points: loserPoints, away_points: winnerPoints });
-        awaySets++;
+        games.push({ home_points: loserPoints, away_points: winnerPoints });
+        awayGames++;
       }
 
-      setIndex++;
+      gameIndex++;
     }
 
     // ensure match winner matches requested winnerSide
-    if (winnerSide === 'home' && homeSets < 3) {
-      while (homeSets < 3 && sets.length < 5) {
-        sets.push({ home_points: pickWinnerPoints(sets.length), away_points: pickLoserPoints(sets.length) });
-        homeSets++;
+    if (winnerSide === 'home' && homeGames < 3) {
+      while (homeGames < 3 && games.length < 5) {
+        games.push({ home_points: pickWinnerPoints(games.length), away_points: pickLoserPoints(games.length) });
+        homeGames++;
       }
     }
-    if (winnerSide === 'away' && awaySets < 3) {
-      while (awaySets < 3 && sets.length < 5) {
-        sets.push({ home_points: pickLoserPoints(sets.length), away_points: pickWinnerPoints(sets.length) });
-        awaySets++;
+    if (winnerSide === 'away' && awayGames < 3) {
+      while (awayGames < 3 && games.length < 5) {
+        games.push({ home_points: pickLoserPoints(games.length), away_points: pickWinnerPoints(games.length) });
+        awayGames++;
       }
     }
 
-    return sets;
+    return games;
   };
 
-  const makeFixedSets = (winnerSide, loserSets, variantSeed) => {
-    const totalSets = 3 + loserSets;
-    const sets = [];
+  const makeFixedGames = (winnerSide, loserGames, variantSeed) => {
+    const totalGames = 3 + loserGames;
+    const games = [];
     const pickLoserPoints = (k) => {
       const options = [3, 4, 5, 6, 7, 8, 9, 10];
       return options[(variantSeed + k) % options.length];
@@ -91,21 +91,21 @@ async function seedDatabase(db) {
     const sequence = [];
     sequence.push(winnerSide);
     sequence.push(winnerSide);
-    for (let i = 0; i < loserSets; i++) sequence.push(winnerSide === 'home' ? 'away' : 'home');
+    for (let i = 0; i < loserGames; i++) sequence.push(winnerSide === 'home' ? 'away' : 'home');
     sequence.push(winnerSide);
 
-    for (let i = 0; i < totalSets; i++) {
+    for (let i = 0; i < totalGames; i++) {
       const win = sequence[i];
       const loserPts = pickLoserPoints(i);
       const winnerPts = pickWinnerPoints(i);
       if (win === 'home') {
-        sets.push({ home_points: winnerPts, away_points: loserPts });
+        games.push({ home_points: winnerPts, away_points: loserPts });
       } else {
-        sets.push({ home_points: loserPts, away_points: winnerPts });
+        games.push({ home_points: loserPts, away_points: winnerPts });
       }
     }
 
-    return sets;
+    return games;
   };
 
   const getMainRoster = async (teamId) => {
@@ -124,7 +124,7 @@ async function seedDatabase(db) {
   };
 
   const completeFixture = async (fixtureId) => {
-    // Fast completion: write fixture_games rows directly (no per-set rows), and update fixture totals.
+    // Fast completion: write fixture_matches rows directly (no per-game rows), and update fixture totals.
     const fixture = await db.get('SELECT * FROM fixtures WHERE id = ?', [fixtureId]);
     if (!fixture) throw new Error('Fixture not found');
 
@@ -166,8 +166,8 @@ async function seedDatabase(db) {
     const matchWinner = (hBase % 2 === 0) ? 'home' : 'away';
     const marginOptions = [0, 1, 2, 3, 4];
     const margin = marginOptions[(hBase >>> 3) % marginOptions.length];
-    const winnerGames = 9 - margin;
-    const homeTarget = matchWinner === 'home' ? winnerGames : (9 - winnerGames);
+    const winnerMatches = 9 - margin;
+    const homeTarget = matchWinner === 'home' ? winnerMatches : (9 - winnerMatches);
 
     const winners = [];
     for (let i = 0; i < 9; i++) {
@@ -181,83 +181,83 @@ async function seedDatabase(db) {
       winners[j] = tmp;
     }
 
-    await db.run('DELETE FROM fixture_game_sets WHERE fixture_game_id IN (SELECT id FROM fixture_games WHERE fixture_id = ?)', [fixtureId]);
-    await db.run('DELETE FROM fixture_games WHERE fixture_id = ?', [fixtureId]);
+    await db.run('DELETE FROM fixture_match_games WHERE fixture_match_id IN (SELECT id FROM fixture_matches WHERE fixture_id = ?)', [fixtureId]);
+    await db.run('DELETE FROM fixture_matches WHERE fixture_id = ?', [fixtureId]);
 
-    const games = [
+    const matches = [
       // 1-3 singles
-      { game_number: 1, game_type: 'singles', homeA: H1, awayA: A2 },
-      { game_number: 2, game_type: 'singles', homeA: H2, awayA: A3 },
-      { game_number: 3, game_type: 'singles', homeA: H3, awayA: A1 },
+      { match_number: 1, match_type: 'singles', homeA: H1, awayA: A2 },
+      { match_number: 2, match_type: 'singles', homeA: H2, awayA: A3 },
+      { match_number: 3, match_type: 'singles', homeA: H3, awayA: A1 },
       // 4-6 doubles
-      { game_number: 4, game_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
-      { game_number: 5, game_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
-      { game_number: 6, game_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
+      { match_number: 4, match_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
+      { match_number: 5, match_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
+      { match_number: 6, match_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
       // 7-9 singles
-      { game_number: 7, game_type: 'singles', homeA: H1, awayA: A1 },
-      { game_number: 8, game_type: 'singles', homeA: H2, awayA: A2 },
-      { game_number: 9, game_type: 'singles', homeA: H3, awayA: A3 },
+      { match_number: 7, match_type: 'singles', homeA: H1, awayA: A1 },
+      { match_number: 8, match_type: 'singles', homeA: H2, awayA: A2 },
+      { match_number: 9, match_type: 'singles', homeA: H3, awayA: A3 },
     ];
 
+    let homeMatchesWon = 0;
+    let awayMatchesWon = 0;
     let homeGamesWon = 0;
     let awayGamesWon = 0;
-    let homeSetsWon = 0;
-    let awaySetsWon = 0;
 
-    for (const g of games) {
-      const h = hashInt(`${fixtureId}:${g.game_number}`);
-      const winnerSide = winners[g.game_number - 1];
-      const loserSetsOptions = [0, 1, 2];
-      const loserSets = loserSetsOptions[h % loserSetsOptions.length];
-      const winnerSets = 3;
+    for (const g of matches) {
+      const h = hashInt(`${fixtureId}:${g.match_number}`);
+      const winnerSide = winners[g.match_number - 1];
+      const loserGamesOptions = [0, 1, 2];
+      const loserGames = loserGamesOptions[h % loserGamesOptions.length];
+      const winnerGames = 3;
       const homeWin = winnerSide === 'home';
 
-      const sets = makeFixedSets(winnerSide, loserSets, h);
+      const games = makeFixedGames(winnerSide, loserGames, h);
 
       const row = {
         id: uuidv4(),
         fixture_id: fixtureId,
-        game_number: g.game_number,
-        game_type: g.game_type,
+        match_number: g.match_number,
+        match_type: g.match_type,
         home_player_a_id: g.homeA,
         away_player_a_id: g.awayA,
         home_player_b_id: g.homeB || null,
         away_player_b_id: g.awayB || null,
-        home_sets_won: homeWin ? winnerSets : loserSets,
-        away_sets_won: homeWin ? loserSets : winnerSets,
+        home_games_won: homeWin ? winnerGames : loserGames,
+        away_games_won: homeWin ? loserGames : winnerGames,
         winner_side: winnerSide,
       };
 
-      if (winnerSide === 'home') homeGamesWon++;
-      if (winnerSide === 'away') awayGamesWon++;
-      homeSetsWon += row.home_sets_won;
-      awaySetsWon += row.away_sets_won;
+      if (winnerSide === 'home') homeMatchesWon++;
+      if (winnerSide === 'away') awayMatchesWon++;
+      homeGamesWon += row.home_games_won;
+      awayGamesWon += row.away_games_won;
 
       await db.run(
-        `INSERT INTO fixture_games (
-           id, fixture_id, game_number, game_type,
+        `INSERT INTO fixture_matches (
+           id, fixture_id, match_number, match_type,
            home_player_a_id, away_player_a_id, home_player_b_id, away_player_b_id,
-           home_sets_won, away_sets_won, winner_side
+           home_games_won, away_games_won, winner_side
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.id,
           row.fixture_id,
-          row.game_number,
-          row.game_type,
+          row.match_number,
+          row.match_type,
           row.home_player_a_id,
           row.away_player_a_id,
           row.home_player_b_id,
           row.away_player_b_id,
-          row.home_sets_won,
-          row.away_sets_won,
+          row.home_games_won,
+          row.away_games_won,
           row.winner_side,
         ]
       );
 
-      for (let i = 0; i < sets.length; i++) {
-        const s = sets[i];
+      for (let i = 0; i < games.length; i++) {
+        const s = games[i];
         await db.run(
-          `INSERT INTO fixture_game_sets (id, fixture_game_id, set_number, home_points, away_points)
+          `INSERT INTO fixture_match_games (id, fixture_match_id, game_number, home_points, away_points)
            VALUES (?, ?, ?, ?, ?)`,
           [uuidv4(), row.id, i + 1, s.home_points, s.away_points]
         );
@@ -266,14 +266,14 @@ async function seedDatabase(db) {
 
     await db.run(
       `UPDATE fixtures
-       SET home_games_won = ?,
+       SET home_matches_won = ?,
+           away_matches_won = ?,
+           home_games_won = ?,
            away_games_won = ?,
-           home_sets_won = ?,
-           away_sets_won = ?,
            status = 'completed',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [homeGamesWon, awayGamesWon, homeSetsWon, awaySetsWon, fixtureId]
+      [homeMatchesWon, awayMatchesWon, homeGamesWon, awayGamesWon, fixtureId]
     );
   };
 
@@ -315,13 +315,13 @@ async function seedDatabase(db) {
     const matchWinner = (hBase % 2 === 0) ? 'home' : 'away';
     const loserWinsOptions = [0, 1, 2, 3, 4];
     const loserWins = loserWinsOptions[(hBase >>> 3) % loserWinsOptions.length];
-    const playedGameCount = 5 + loserWins;
+    const playedMatchCount = 5 + loserWins;
 
     const winners = [];
     const winnerWinsNeeded = 5;
     let homeWins = 0;
     let awayWins = 0;
-    for (let i = 0; i < playedGameCount; i++) {
+    for (let i = 0; i < playedMatchCount; i++) {
       const preferWinner = ((hBase + i) % 3) !== 0;
       const nextWinner = preferWinner ? matchWinner : (matchWinner === 'home' ? 'away' : 'home');
       if (nextWinner === 'home') {
@@ -361,81 +361,81 @@ async function seedDatabase(db) {
     };
     fixCounts();
 
-    await db.run('DELETE FROM fixture_game_sets WHERE fixture_game_id IN (SELECT id FROM fixture_games WHERE fixture_id = ?)', [fixtureId]);
-    await db.run('DELETE FROM fixture_games WHERE fixture_id = ?', [fixtureId]);
+    await db.run('DELETE FROM fixture_match_games WHERE fixture_match_id IN (SELECT id FROM fixture_matches WHERE fixture_id = ?)', [fixtureId]);
+    await db.run('DELETE FROM fixture_matches WHERE fixture_id = ?', [fixtureId]);
 
-    const games = [
-      { game_number: 1, game_type: 'singles', homeA: H1, awayA: A2 },
-      { game_number: 2, game_type: 'singles', homeA: H2, awayA: A3 },
-      { game_number: 3, game_type: 'singles', homeA: H3, awayA: A1 },
-      { game_number: 4, game_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
-      { game_number: 5, game_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
-      { game_number: 6, game_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
-      { game_number: 7, game_type: 'singles', homeA: H1, awayA: A1 },
-      { game_number: 8, game_type: 'singles', homeA: H2, awayA: A2 },
-      { game_number: 9, game_type: 'singles', homeA: H3, awayA: A3 },
+    const matches = [
+      { match_number: 1, match_type: 'singles', homeA: H1, awayA: A2 },
+      { match_number: 2, match_type: 'singles', homeA: H2, awayA: A3 },
+      { match_number: 3, match_type: 'singles', homeA: H3, awayA: A1 },
+      { match_number: 4, match_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
+      { match_number: 5, match_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
+      { match_number: 6, match_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
+      { match_number: 7, match_type: 'singles', homeA: H1, awayA: A1 },
+      { match_number: 8, match_type: 'singles', homeA: H2, awayA: A2 },
+      { match_number: 9, match_type: 'singles', homeA: H3, awayA: A3 },
     ];
 
+    let homeMatchesWon = 0;
+    let awayMatchesWon = 0;
     let homeGamesWon = 0;
     let awayGamesWon = 0;
-    let homeSetsWon = 0;
-    let awaySetsWon = 0;
 
-    for (const g of games) {
-      const h = hashInt(`${fixtureId}:${g.game_number}:cup`);
-      const played = g.game_number <= playedGameCount;
-      const winnerSide = played ? winners[g.game_number - 1] : null;
-      const loserSetsOptions = [0, 1, 2];
-      const loserSets = loserSetsOptions[h % loserSetsOptions.length];
-      const winnerSets = 3;
+    for (const g of matches) {
+      const h = hashInt(`${fixtureId}:${g.match_number}:cup`);
+      const played = g.match_number <= playedMatchCount;
+      const winnerSide = played ? winners[g.match_number - 1] : null;
+      const loserGamesOptions = [0, 1, 2];
+      const loserGames = loserGamesOptions[h % loserGamesOptions.length];
+      const winnerGames = 3;
       const homeWin = winnerSide === 'home';
 
       const row = {
         id: uuidv4(),
         fixture_id: fixtureId,
-        game_number: g.game_number,
-        game_type: g.game_type,
+        match_number: g.match_number,
+        match_type: g.match_type,
         home_player_a_id: g.homeA,
         away_player_a_id: g.awayA,
         home_player_b_id: g.homeB || null,
         away_player_b_id: g.awayB || null,
-        home_sets_won: played ? (homeWin ? winnerSets : loserSets) : 0,
-        away_sets_won: played ? (homeWin ? loserSets : winnerSets) : 0,
+        home_games_won: played ? (homeWin ? winnerGames : loserGames) : 0,
+        away_games_won: played ? (homeWin ? loserGames : winnerGames) : 0,
         winner_side: winnerSide,
       };
 
-      if (winnerSide === 'home') homeGamesWon++;
-      if (winnerSide === 'away') awayGamesWon++;
-      homeSetsWon += row.home_sets_won;
-      awaySetsWon += row.away_sets_won;
+      if (winnerSide === 'home') homeMatchesWon++;
+      if (winnerSide === 'away') awayMatchesWon++;
+      homeGamesWon += row.home_games_won;
+      awayGamesWon += row.away_games_won;
 
       await db.run(
-        `INSERT INTO fixture_games (
-           id, fixture_id, game_number, game_type,
+        `INSERT INTO fixture_matches (
+           id, fixture_id, match_number, match_type,
            home_player_a_id, away_player_a_id, home_player_b_id, away_player_b_id,
-           home_sets_won, away_sets_won, winner_side
+           home_games_won, away_games_won, winner_side
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.id,
           row.fixture_id,
-          row.game_number,
-          row.game_type,
+          row.match_number,
+          row.match_type,
           row.home_player_a_id,
           row.away_player_a_id,
           row.home_player_b_id,
           row.away_player_b_id,
-          row.home_sets_won,
-          row.away_sets_won,
+          row.home_games_won,
+          row.away_games_won,
           row.winner_side,
         ]
       );
 
       if (played) {
-        const sets = makeFixedSets(winnerSide, loserSets, h);
-        for (let i = 0; i < sets.length; i++) {
-          const s = sets[i];
+        const games = makeFixedGames(winnerSide, loserGames, h);
+        for (let i = 0; i < games.length; i++) {
+          const s = games[i];
           await db.run(
-            `INSERT INTO fixture_game_sets (id, fixture_game_id, set_number, home_points, away_points)
+            `INSERT INTO fixture_match_games (id, fixture_match_id, game_number, home_points, away_points)
              VALUES (?, ?, ?, ?, ?)`,
             [uuidv4(), row.id, i + 1, s.home_points, s.away_points]
           );
@@ -445,14 +445,14 @@ async function seedDatabase(db) {
 
     await db.run(
       `UPDATE fixtures
-       SET home_games_won = ?,
+       SET home_matches_won = ?,
+           away_matches_won = ?,
+           home_games_won = ?,
            away_games_won = ?,
-           home_sets_won = ?,
-           away_sets_won = ?,
            status = 'completed',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [homeGamesWon, awayGamesWon, homeSetsWon, awaySetsWon, fixtureId]
+      [homeMatchesWon, awayMatchesWon, homeGamesWon, awayGamesWon, fixtureId]
     );
 
     await fixtureManager.advanceCupWinnerFromFixture(fixtureId);
@@ -488,8 +488,8 @@ async function seedDatabase(db) {
   // Order matters due to foreign keys.
   await db.run('DELETE FROM division_cup_matches');
   await db.run('DELETE FROM division_cups');
-  await db.run('DELETE FROM fixture_game_sets');
-  await db.run('DELETE FROM fixture_games');
+  await db.run('DELETE FROM fixture_match_games');
+  await db.run('DELETE FROM fixture_matches');
   await db.run('DELETE FROM fixture_lineups');
   await db.run('DELETE FROM fixtures');
   await db.run('DELETE FROM team_season_division_teams');
@@ -636,10 +636,10 @@ async function seedDatabase(db) {
           await db.run(
             `UPDATE fixtures
              SET status = 'scheduled',
+                 home_matches_won = 0,
+                 away_matches_won = 0,
                  home_games_won = 0,
                  away_games_won = 0,
-                 home_sets_won = 0,
-                 away_sets_won = 0,
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
             [f.id]

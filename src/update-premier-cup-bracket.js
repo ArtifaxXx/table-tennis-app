@@ -8,20 +8,20 @@ const mustGet = async (db, sql, params, label) => {
 
 const assertFixtureUnplayed = async (db, fixtureId) => {
   const f = await db.get(
-    `SELECT id, status, home_games_won, away_games_won
+    `SELECT id, status, home_matches_won, away_matches_won
      FROM fixtures
      WHERE id = ?`,
     [fixtureId]
   );
   if (!f) throw new Error(`Fixture not found: ${fixtureId}`);
 
-  if ((f.home_games_won || 0) !== 0 || (f.away_games_won || 0) !== 0) {
+  if ((f.home_matches_won || 0) !== 0 || (f.away_matches_won || 0) !== 0) {
     throw new Error(`Refusing to modify fixture ${fixtureId}: it already has a score`);
   }
 
-  const games = await db.get('SELECT COUNT(*) as count FROM fixture_games WHERE fixture_id = ?', [fixtureId]);
-  if ((games?.count || 0) > 0) {
-    throw new Error(`Refusing to modify fixture ${fixtureId}: fixture_games already exist`);
+  const matches = await db.get('SELECT COUNT(*) as count FROM fixture_matches WHERE fixture_id = ?', [fixtureId]);
+  if ((matches?.count || 0) > 0) {
+    throw new Error(`Refusing to modify fixture ${fixtureId}: fixture_matches already exist`);
   }
 
   const lineups = await db.get('SELECT COUNT(*) as count FROM fixture_lineups WHERE fixture_id = ?', [fixtureId]);

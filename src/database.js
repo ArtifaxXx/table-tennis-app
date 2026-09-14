@@ -179,6 +179,10 @@ class Database {
   }
 
   async createTables() {
+    // Rename game/set terminology to match/game for older databases before
+    // CREATE TABLE IF NOT EXISTS runs (otherwise the rename target exists).
+    await this.migrateGameSetNaming();
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY,
@@ -271,10 +275,10 @@ class Database {
         away_team_id TEXT NOT NULL,
         match_date DATETIME,
         status TEXT DEFAULT 'scheduled',
+        home_matches_won INTEGER DEFAULT 0,
+        away_matches_won INTEGER DEFAULT 0,
         home_games_won INTEGER DEFAULT 0,
         away_games_won INTEGER DEFAULT 0,
-        home_sets_won INTEGER DEFAULT 0,
-        away_sets_won INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (team_season_id) REFERENCES team_seasons (id),
@@ -343,17 +347,17 @@ class Database {
         UNIQUE (fixture_id, side, day_rank)
       )`,
 
-      `CREATE TABLE IF NOT EXISTS fixture_games (
+      `CREATE TABLE IF NOT EXISTS fixture_matches (
         id TEXT PRIMARY KEY,
         fixture_id TEXT NOT NULL,
-        game_number INTEGER NOT NULL,
-        game_type TEXT NOT NULL,
+        match_number INTEGER NOT NULL,
+        match_type TEXT NOT NULL,
         home_player_a_id TEXT NOT NULL,
         away_player_a_id TEXT NOT NULL,
         home_player_b_id TEXT,
         away_player_b_id TEXT,
-        home_sets_won INTEGER DEFAULT 0,
-        away_sets_won INTEGER DEFAULT 0,
+        home_games_won INTEGER DEFAULT 0,
+        away_games_won INTEGER DEFAULT 0,
         winner_side TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -362,19 +366,19 @@ class Database {
         FOREIGN KEY (away_player_a_id) REFERENCES players (id),
         FOREIGN KEY (home_player_b_id) REFERENCES players (id),
         FOREIGN KEY (away_player_b_id) REFERENCES players (id),
-        UNIQUE (fixture_id, game_number)
+        UNIQUE (fixture_id, match_number)
       )`,
 
-      `CREATE TABLE IF NOT EXISTS fixture_game_sets (
+      `CREATE TABLE IF NOT EXISTS fixture_match_games (
         id TEXT PRIMARY KEY,
-        fixture_game_id TEXT NOT NULL,
-        set_number INTEGER NOT NULL,
+        fixture_match_id TEXT NOT NULL,
+        game_number INTEGER NOT NULL,
         home_points INTEGER NOT NULL,
         away_points INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (fixture_game_id) REFERENCES fixture_games (id),
-        UNIQUE (fixture_game_id, set_number)
+        FOREIGN KEY (fixture_match_id) REFERENCES fixture_matches (id),
+        UNIQUE (fixture_match_id, game_number)
       )`,
       
       `CREATE TABLE IF NOT EXISTS matches (
@@ -455,6 +459,69 @@ class Database {
 
     // Ensure app settings exist and default admin password is persisted.
     await this.ensureDefaultAdminPassword();
+  }
+
+  async migrateGameSetNaming() {
+    const tables = await this.all("SELECT name FROM sqlite_master WHERE type = 'table'", []);
+    const tableNames = new Set(tables.map((t) => t.name));
+
+    const renameColumn = async (table, from, to) => {
+      const cols = await this.all(`PRAGMA table_info(${table})`);
+      if (!cols || cols.length === 0) return;
+      const colNames = new Set(cols.map((c) => c.name));
+      if (colNames.has(from) && !colNames.has(to)) {
+        await this.run(`ALTER TABLE ${table} RENAME COLUMN ${from} TO ${to}`);
+      }
+    };
+
+    if (tableNames.has('fixture_games')) {
+      if (tableNames.has('fixture_matches')) {
+        // Both exist (e.g. partial migration): merge then drop the old table.
+        await this.run(
+          `INSERT OR IGNORE INTO fixture_matches
+             (id, fixture_id, match_number, match_type, home_player_a_id, away_player_a_id,
+              home_player_b_id, away_player_b_id, home_games_won, away_games_won,
+              winner_side, created_at, updated_at)
+           SELECT id, fixture_id, game_number, game_type, home_player_a_id, away_player_a_id,
+                  home_player_b_id, away_player_b_id, home_sets_won, away_sets_won,
+                  winner_side, created_at, updated_at
+           FROM fixture_games`,
+          []
+        );
+        await this.run('DROP TABLE fixture_games', []);
+      } else {
+        await this.run('ALTER TABLE fixture_games RENAME TO fixture_matches', []);
+      }
+    }
+
+    if (tableNames.has('fixture_game_sets')) {
+      if (tableNames.has('fixture_match_games')) {
+        await this.run(
+          `INSERT OR IGNORE INTO fixture_match_games
+             (id, fixture_match_id, game_number, home_points, away_points, created_at, updated_at)
+           SELECT id, fixture_game_id, set_number, home_points, away_points, created_at, updated_at
+           FROM fixture_game_sets`,
+          []
+        );
+        await this.run('DROP TABLE fixture_game_sets', []);
+      } else {
+        await this.run('ALTER TABLE fixture_game_sets RENAME TO fixture_match_games', []);
+      }
+    }
+
+    // Order matters on fixtures: free up the *_games_won names first.
+    await renameColumn('fixtures', 'home_games_won', 'home_matches_won');
+    await renameColumn('fixtures', 'away_games_won', 'away_matches_won');
+    await renameColumn('fixtures', 'home_sets_won', 'home_games_won');
+    await renameColumn('fixtures', 'away_sets_won', 'away_games_won');
+
+    await renameColumn('fixture_matches', 'game_number', 'match_number');
+    await renameColumn('fixture_matches', 'game_type', 'match_type');
+    await renameColumn('fixture_matches', 'home_sets_won', 'home_games_won');
+    await renameColumn('fixture_matches', 'away_sets_won', 'away_games_won');
+
+    await renameColumn('fixture_match_games', 'fixture_game_id', 'fixture_match_id');
+    await renameColumn('fixture_match_games', 'set_number', 'game_number');
   }
 
   async ensureDefaultDivisionBackfill() {

@@ -214,21 +214,21 @@ class FixtureManager {
       // Clear any recorded detail for this fixture.
       await this.db.run('DELETE FROM fixture_lineups WHERE fixture_id = ?', [fixtureId]);
       await this.db.run(
-        `DELETE FROM fixture_game_sets
-         WHERE fixture_game_id IN (SELECT id FROM fixture_games WHERE fixture_id = ?)`,
+        `DELETE FROM fixture_match_games
+         WHERE fixture_match_id IN (SELECT id FROM fixture_matches WHERE fixture_id = ?)`,
         [fixtureId]
       );
-      await this.db.run('DELETE FROM fixture_games WHERE fixture_id = ?', [fixtureId]);
+      await this.db.run('DELETE FROM fixture_matches WHERE fixture_id = ?', [fixtureId]);
 
       await this.db.run(
         `UPDATE fixtures
          SET status = 'completed',
              forfeited = 1,
              forfeit_winner_team_id = ?,
-             home_games_won = ?,
-             away_games_won = ?,
-             home_sets_won = 0,
-             away_sets_won = 0,
+             home_matches_won = ?,
+             away_matches_won = ?,
+             home_games_won = 0,
+             away_games_won = 0,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [winnerTeamId, homeWon ? winTarget : 0, homeWon ? 0 : winTarget, fixtureId]
@@ -489,8 +489,8 @@ class FixtureManager {
     if ((fixture.match_type || 'league') !== 'cup') return;
 
     // Determine winner team.
-    const homeWon = (fixture.home_games_won || 0) > (fixture.away_games_won || 0);
-    const awayWon = (fixture.away_games_won || 0) > (fixture.home_games_won || 0);
+    const homeWon = (fixture.home_matches_won || 0) > (fixture.away_matches_won || 0);
+    const awayWon = (fixture.away_matches_won || 0) > (fixture.home_matches_won || 0);
     const winnerTeamId = homeWon ? fixture.home_team_id : (awayWon ? fixture.away_team_id : null);
     if (!winnerTeamId) return;
 
@@ -686,8 +686,8 @@ class FixtureManager {
               wt.name as winner_team_name,
               f.match_date as fixture_match_date,
               f.status as fixture_status,
-              f.home_games_won as fixture_home_games_won,
-              f.away_games_won as fixture_away_games_won
+              f.home_matches_won as fixture_home_matches_won,
+              f.away_matches_won as fixture_away_matches_won
        FROM division_cup_matches m
        LEFT JOIN teams ht ON m.home_team_id = ht.id
        LEFT JOIN teams at ON m.away_team_id = at.id
@@ -781,20 +781,20 @@ class FixtureManager {
                    JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                    WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank IN (1,2,3)) < 3
                 ) THEN 'missing_lineups'
-                WHEN (SELECT COUNT(*) FROM fixture_games fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_games'
+                WHEN (SELECT COUNT(*) FROM fixture_matches fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_matches'
                 WHEN EXISTS (
                   SELECT 1
-                  FROM fixture_games fg
+                  FROM fixture_matches fg
                   WHERE fg.fixture_id = f.id
                     AND (
                       CASE
                         WHEN (f.match_type IS NULL OR f.match_type = 'league') THEN
-                          (SELECT COUNT(*) FROM fixture_game_sets s WHERE s.fixture_game_id = fg.id) < 3
+                          (SELECT COUNT(*) FROM fixture_match_games s WHERE s.fixture_match_id = fg.id) < 3
                         ELSE
-                          (fg.winner_side IS NOT NULL AND (SELECT COUNT(*) FROM fixture_game_sets s WHERE s.fixture_game_id = fg.id) < 3)
+                          (fg.winner_side IS NOT NULL AND (SELECT COUNT(*) FROM fixture_match_games s WHERE s.fixture_match_id = fg.id) < 3)
                       END
                     )
-                ) THEN 'missing_sets'
+                ) THEN 'missing_games'
                 WHEN (
                   (
                     (SELECT tr.slot
@@ -968,7 +968,7 @@ class FixtureManager {
     if (!fixture) return null;
 
     fixture.lineups = await this.getFixtureLineups(id);
-    fixture.games = await this.getFixtureGamesWithSets(id);
+    fixture.matches = await this.getFixtureMatchesWithGames(id);
 
     return fixture;
   }
@@ -1196,11 +1196,11 @@ class FixtureManager {
       );
     }
 
-    await this.ensureGamesGenerated(fixtureId);
+    await this.ensureMatchesGenerated(fixtureId);
     return this.getFixtureLineups(fixtureId);
   }
 
-  async ensureGamesGenerated(fixtureId) {
+  async ensureMatchesGenerated(fixtureId) {
     const lineupRows = await this.getFixtureLineups(fixtureId);
     const home = lineupRows.filter(r => r.side === 'home').sort((a, b) => a.day_rank - b.day_rank);
     const away = lineupRows.filter(r => r.side === 'away').sort((a, b) => a.day_rank - b.day_rank);
@@ -1209,7 +1209,7 @@ class FixtureManager {
       return;
     }
 
-    const existing = await this.db.all('SELECT * FROM fixture_games WHERE fixture_id = ? ORDER BY game_number', [fixtureId]);
+    const existing = await this.db.all('SELECT * FROM fixture_matches WHERE fixture_id = ? ORDER BY match_number', [fixtureId]);
     if (existing.length > 0) {
       return;
     }
@@ -1221,32 +1221,32 @@ class FixtureManager {
     const A2 = away[1].player_id;
     const A3 = away[2].player_id;
 
-    const games = [
+    const matches = [
       // 1-3 singles
-      { game_number: 1, game_type: 'singles', homeA: H3, awayA: A2 },
-      { game_number: 2, game_type: 'singles', homeA: H2, awayA: A1 },
-      { game_number: 3, game_type: 'singles', homeA: H1, awayA: A3 },
+      { match_number: 1, match_type: 'singles', homeA: H3, awayA: A2 },
+      { match_number: 2, match_type: 'singles', homeA: H2, awayA: A1 },
+      { match_number: 3, match_type: 'singles', homeA: H1, awayA: A3 },
       // 4-6 doubles
-      { game_number: 4, game_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
-      { game_number: 5, game_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
-      { game_number: 6, game_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
+      { match_number: 4, match_type: 'doubles', homeA: H1, homeB: H2, awayA: A1, awayB: A2 },
+      { match_number: 5, match_type: 'doubles', homeA: H2, homeB: H3, awayA: A2, awayB: A3 },
+      { match_number: 6, match_type: 'doubles', homeA: H1, homeB: H3, awayA: A1, awayB: A3 },
       // 7-9 singles
-      { game_number: 7, game_type: 'singles', homeA: H2, awayA: A2 },
-      { game_number: 8, game_type: 'singles', homeA: H3, awayA: A3 },
-      { game_number: 9, game_type: 'singles', homeA: H1, awayA: A1 },
+      { match_number: 7, match_type: 'singles', homeA: H2, awayA: A2 },
+      { match_number: 8, match_type: 'singles', homeA: H3, awayA: A3 },
+      { match_number: 9, match_type: 'singles', homeA: H1, awayA: A1 },
     ];
 
-    for (const g of games) {
+    for (const g of matches) {
       await this.db.run(
-        `INSERT OR IGNORE INTO fixture_games (
-           id, fixture_id, game_number, game_type,
+        `INSERT OR IGNORE INTO fixture_matches (
+           id, fixture_id, match_number, match_type,
            home_player_a_id, away_player_a_id, home_player_b_id, away_player_b_id
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uuidv4(),
           fixtureId,
-          g.game_number,
-          g.game_type,
+          g.match_number,
+          g.match_type,
           g.homeA,
           g.awayA,
           g.homeB || null,
@@ -1256,39 +1256,39 @@ class FixtureManager {
     }
   }
 
-  async getFixtureGamesWithSets(fixtureId) {
-    const games = await this.db.all(
+  async getFixtureMatchesWithGames(fixtureId) {
+    const matches = await this.db.all(
       `SELECT fg.*,
               hpA.name as home_player_a_name,
               apA.name as away_player_a_name,
               hpB.name as home_player_b_name,
               apB.name as away_player_b_name
-       FROM fixture_games fg
+       FROM fixture_matches fg
        JOIN players hpA ON fg.home_player_a_id = hpA.id
        JOIN players apA ON fg.away_player_a_id = apA.id
        LEFT JOIN players hpB ON fg.home_player_b_id = hpB.id
        LEFT JOIN players apB ON fg.away_player_b_id = apB.id
        WHERE fg.fixture_id = ?
-       ORDER BY fg.game_number ASC`,
+       ORDER BY fg.match_number ASC`,
       [fixtureId]
     );
 
-    for (const g of games) {
-      g.sets = await this.db.all(
+    for (const g of matches) {
+      g.games = await this.db.all(
         `SELECT *
-         FROM fixture_game_sets
-         WHERE fixture_game_id = ?
-         ORDER BY set_number ASC`,
+         FROM fixture_match_games
+         WHERE fixture_match_id = ?
+         ORDER BY game_number ASC`,
         [g.id]
       );
     }
 
-    return games;
+    return matches;
   }
 
-  async setGameSets(fixtureId, gameNumber, sets) {
-    if (!Array.isArray(sets) || sets.length < 3 || sets.length > 5) {
-      throw new Error('Sets must be an array with 3 to 5 set score objects');
+  async setMatchGames(fixtureId, matchNumber, games) {
+    if (!Array.isArray(games) || games.length < 3 || games.length > 5) {
+      throw new Error('Games must be an array with 3 to 5 game score objects');
     }
 
     await this.assertFixtureSeasonIsActive(fixtureId);
@@ -1300,19 +1300,19 @@ class FixtureManager {
 
     if ((fixture.match_type || 'league') === 'cup') {
       const rows = await this.db.all(
-        `SELECT game_number, winner_side
-         FROM fixture_games
+        `SELECT match_number, winner_side
+         FROM fixture_matches
          WHERE fixture_id = ?
-         ORDER BY game_number ASC`,
+         ORDER BY match_number ASC`,
         [fixtureId]
       );
-      const winnerByNum = new Map(rows.map((r) => [Number(r.game_number), r.winner_side]));
+      const winnerByNum = new Map(rows.map((r) => [Number(r.match_number), r.winner_side]));
       let homeWins = 0;
       let awayWins = 0;
-      for (let n = 1; n < Number(gameNumber); n++) {
+      for (let n = 1; n < Number(matchNumber); n++) {
         const w = winnerByNum.get(n);
         if (w !== 'home' && w !== 'away') {
-          throw new Error('Cup games must be completed in order');
+          throw new Error('Cup matches must be completed in order');
         }
         if (w === 'home') homeWins++;
         if (w === 'away') awayWins++;
@@ -1322,56 +1322,56 @@ class FixtureManager {
       }
     }
 
-    const game = await this.db.get(
-      `SELECT * FROM fixture_games WHERE fixture_id = ? AND game_number = ?`,
-      [fixtureId, gameNumber]
+    const match = await this.db.get(
+      `SELECT * FROM fixture_matches WHERE fixture_id = ? AND match_number = ?`,
+      [fixtureId, matchNumber]
     );
 
-    if (!game) {
-      throw new Error('Game not found');
+    if (!match) {
+      throw new Error('Match not found');
     }
 
-    // Replace sets
-    await this.db.run('DELETE FROM fixture_game_sets WHERE fixture_game_id = ?', [game.id]);
+    // Replace games
+    await this.db.run('DELETE FROM fixture_match_games WHERE fixture_match_id = ?', [match.id]);
 
-    let homeSetsWon = 0;
-    let awaySetsWon = 0;
+    let homeGamesWon = 0;
+    let awayGamesWon = 0;
 
-    for (let i = 0; i < sets.length; i++) {
-      const s = sets[i];
+    for (let i = 0; i < games.length; i++) {
+      const s = games[i];
       if (typeof s.home_points !== 'number' || typeof s.away_points !== 'number') {
-        throw new Error('Each set must include numeric home_points and away_points');
+        throw new Error('Each game must include numeric home_points and away_points');
       }
 
       await this.db.run(
-        `INSERT INTO fixture_game_sets (id, fixture_game_id, set_number, home_points, away_points)
+        `INSERT INTO fixture_match_games (id, fixture_match_id, game_number, home_points, away_points)
          VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), game.id, i + 1, s.home_points, s.away_points]
+        [uuidv4(), match.id, i + 1, s.home_points, s.away_points]
       );
 
-      if (s.home_points > s.away_points) homeSetsWon++;
-      if (s.away_points > s.home_points) awaySetsWon++;
+      if (s.home_points > s.away_points) homeGamesWon++;
+      if (s.away_points > s.home_points) awayGamesWon++;
 
       // best-of-5: stop counting once winner is decided
-      if (homeSetsWon === 3 || awaySetsWon === 3) {
-        // ignore any trailing set entries beyond decision for winner computation,
+      if (homeGamesWon === 3 || awayGamesWon === 3) {
+        // ignore any trailing game entries beyond decision for winner computation,
         // but we already persisted what user sent
         break;
       }
     }
 
     let winnerSide = null;
-    if (homeSetsWon > awaySetsWon) winnerSide = 'home';
-    if (awaySetsWon > homeSetsWon) winnerSide = 'away';
+    if (homeGamesWon > awayGamesWon) winnerSide = 'home';
+    if (awayGamesWon > homeGamesWon) winnerSide = 'away';
 
     await this.db.run(
-      `UPDATE fixture_games
-       SET home_sets_won = ?,
-           away_sets_won = ?,
+      `UPDATE fixture_matches
+       SET home_games_won = ?,
+           away_games_won = ?,
            winner_side = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [homeSetsWon, awaySetsWon, winnerSide, game.id]
+      [homeGamesWon, awayGamesWon, winnerSide, match.id]
     );
 
     await this.recomputeFixtureTotals(fixtureId);
@@ -1381,9 +1381,9 @@ class FixtureManager {
     return this.getFixtureById(fixtureId);
   }
 
-  async setFixtureGameSets(fixtureId, games) {
-    if (!Array.isArray(games) || games.length === 0) {
-      throw new Error('games must be a non-empty array');
+  async setFixtureMatchGames(fixtureId, matches) {
+    if (!Array.isArray(matches) || matches.length === 0) {
+      throw new Error('matches must be a non-empty array');
     }
 
     await this.assertFixtureSeasonIsActive(fixtureId);
@@ -1392,104 +1392,104 @@ class FixtureManager {
     if (!fixture) throw new Error('Fixture not found');
     const matchType = fixture.match_type || 'league';
 
-    const gameRows = await this.db.all(
-      `SELECT id, game_number
-       FROM fixture_games
+    const matchRows = await this.db.all(
+      `SELECT id, match_number
+       FROM fixture_matches
        WHERE fixture_id = ?`,
       [fixtureId]
     );
-    const gameIdByNumber = new Map(gameRows.map((g) => [g.game_number, g.id]));
+    const matchIdByNumber = new Map(matchRows.map((g) => [g.match_number, g.id]));
 
     await this.db.run('BEGIN');
     try {
-      const sortedGames = [...games].sort((a, b) => Number(a?.game_number) - Number(b?.game_number));
+      const sortedMatches = [...matches].sort((a, b) => Number(a?.match_number) - Number(b?.match_number));
       let cupHomeWins = 0;
       let cupAwayWins = 0;
       let cupDecided = false;
-      let cupLastDecidedGameNumber = 0;
+      let cupLastDecidedMatchNumber = 0;
 
-      for (const g of sortedGames) {
-        const gameNumber = Number(g?.game_number);
-        const sets = g?.sets;
+      for (const g of sortedMatches) {
+        const matchNumber = Number(g?.match_number);
+        const games = g?.games;
 
-        if (!Number.isInteger(gameNumber) || gameNumber < 1 || gameNumber > 9) {
-          throw new Error('Each game must include a valid game_number (1-9)');
+        if (!Number.isInteger(matchNumber) || matchNumber < 1 || matchNumber > 9) {
+          throw new Error('Each match must include a valid match_number (1-9)');
         }
-        if (!Array.isArray(sets) || sets.length < 3 || sets.length > 5) {
-          throw new Error('Each game must include sets with 3 to 5 set score objects');
+        if (!Array.isArray(games) || games.length < 3 || games.length > 5) {
+          throw new Error('Each match must include games with 3 to 5 game score objects');
         }
 
-        const fixtureGameId = gameIdByNumber.get(gameNumber);
-        if (!fixtureGameId) {
-          throw new Error(`Game not found: ${gameNumber}`);
+        const fixtureMatchId = matchIdByNumber.get(matchNumber);
+        if (!fixtureMatchId) {
+          throw new Error(`Match not found: ${matchNumber}`);
         }
 
         if (matchType === 'cup') {
           if (cupDecided) {
-            const hasAnyPoints = Array.isArray(sets) && sets.some((s) => (Number(s?.home_points) || 0) !== 0 || (Number(s?.away_points) || 0) !== 0);
+            const hasAnyPoints = Array.isArray(games) && games.some((s) => (Number(s?.home_points) || 0) !== 0 || (Number(s?.away_points) || 0) !== 0);
             if (hasAnyPoints) {
               throw new Error('Cup fixture is already decided');
             }
             continue;
           }
 
-          // Must be sequentially decided: cannot score game N unless game N-1 has a winner.
-          if (gameNumber !== cupLastDecidedGameNumber + 1) {
-            const hasAnyPoints = Array.isArray(sets) && sets.some((s) => (Number(s?.home_points) || 0) !== 0 || (Number(s?.away_points) || 0) !== 0);
+          // Must be sequentially decided: cannot score match N unless match N-1 has a winner.
+          if (matchNumber !== cupLastDecidedMatchNumber + 1) {
+            const hasAnyPoints = Array.isArray(games) && games.some((s) => (Number(s?.home_points) || 0) !== 0 || (Number(s?.away_points) || 0) !== 0);
             if (hasAnyPoints) {
-              throw new Error('Cup games must be completed in order');
+              throw new Error('Cup matches must be completed in order');
             }
             continue;
           }
         }
 
-        await this.db.run('DELETE FROM fixture_game_sets WHERE fixture_game_id = ?', [fixtureGameId]);
+        await this.db.run('DELETE FROM fixture_match_games WHERE fixture_match_id = ?', [fixtureMatchId]);
 
-        let homeSetsWon = 0;
-        let awaySetsWon = 0;
+        let homeGamesWon = 0;
+        let awayGamesWon = 0;
 
-        for (let i = 0; i < sets.length; i++) {
-          const s = sets[i];
+        for (let i = 0; i < games.length; i++) {
+          const s = games[i];
           if (typeof s.home_points !== 'number' || typeof s.away_points !== 'number') {
-            throw new Error('Each set must include numeric home_points and away_points');
+            throw new Error('Each game must include numeric home_points and away_points');
           }
 
           await this.db.run(
-            `INSERT INTO fixture_game_sets (id, fixture_game_id, set_number, home_points, away_points)
+            `INSERT INTO fixture_match_games (id, fixture_match_id, game_number, home_points, away_points)
              VALUES (?, ?, ?, ?, ?)`,
-            [uuidv4(), fixtureGameId, i + 1, s.home_points, s.away_points]
+            [uuidv4(), fixtureMatchId, i + 1, s.home_points, s.away_points]
           );
 
-          if (s.home_points > s.away_points) homeSetsWon++;
-          if (s.away_points > s.home_points) awaySetsWon++;
+          if (s.home_points > s.away_points) homeGamesWon++;
+          if (s.away_points > s.home_points) awayGamesWon++;
 
-          if (homeSetsWon === 3 || awaySetsWon === 3) {
+          if (homeGamesWon === 3 || awayGamesWon === 3) {
             break;
           }
         }
 
         let winnerSide = null;
-        if (homeSetsWon > awaySetsWon) winnerSide = 'home';
-        if (awaySetsWon > homeSetsWon) winnerSide = 'away';
+        if (homeGamesWon > awayGamesWon) winnerSide = 'home';
+        if (awayGamesWon > homeGamesWon) winnerSide = 'away';
 
         await this.db.run(
-          `UPDATE fixture_games
-           SET home_sets_won = ?,
-               away_sets_won = ?,
+          `UPDATE fixture_matches
+           SET home_games_won = ?,
+               away_games_won = ?,
                winner_side = ?,
                updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
-          [homeSetsWon, awaySetsWon, winnerSide, fixtureGameId]
+          [homeGamesWon, awayGamesWon, winnerSide, fixtureMatchId]
         );
 
         if (matchType === 'cup') {
           if (winnerSide !== 'home' && winnerSide !== 'away') {
-            // Not decided yet, so we can't proceed to later games.
+            // Not decided yet, so we can't proceed to later matches.
             break;
           }
           if (winnerSide === 'home') cupHomeWins++;
           if (winnerSide === 'away') cupAwayWins++;
-          cupLastDecidedGameNumber = gameNumber;
+          cupLastDecidedMatchNumber = matchNumber;
           if (cupHomeWins >= 5 || cupAwayWins >= 5) {
             cupDecided = true;
           }
@@ -1511,38 +1511,38 @@ class FixtureManager {
   async recomputeFixtureTotals(fixtureId) {
     const fixture = await this.db.get('SELECT match_type FROM fixtures WHERE id = ?', [fixtureId]);
     const matchType = fixture?.match_type || 'league';
-    const games = await this.db.all(
-      `SELECT home_sets_won, away_sets_won, winner_side
-       FROM fixture_games
+    const matches = await this.db.all(
+      `SELECT home_games_won, away_games_won, winner_side
+       FROM fixture_matches
        WHERE fixture_id = ?`,
       [fixtureId]
     );
 
-    const homeGamesWon = games.filter(g => g.winner_side === 'home').length;
-    const awayGamesWon = games.filter(g => g.winner_side === 'away').length;
+    const homeMatchesWon = matches.filter(g => g.winner_side === 'home').length;
+    const awayMatchesWon = matches.filter(g => g.winner_side === 'away').length;
 
-    const homeSetsWon = games.reduce((sum, g) => sum + (g.home_sets_won || 0), 0);
-    const awaySetsWon = games.reduce((sum, g) => sum + (g.away_sets_won || 0), 0);
+    const homeGamesWon = matches.reduce((sum, g) => sum + (g.home_games_won || 0), 0);
+    const awayGamesWon = matches.reduce((sum, g) => sum + (g.away_games_won || 0), 0);
 
     let status = 'scheduled';
-    if (games.length > 0 && games.some(g => g.winner_side)) {
+    if (matches.length > 0 && matches.some(g => g.winner_side)) {
       if (matchType === 'cup') {
-        status = (homeGamesWon >= 5 || awayGamesWon >= 5) ? 'completed' : 'in_progress';
+        status = (homeMatchesWon >= 5 || awayMatchesWon >= 5) ? 'completed' : 'in_progress';
       } else {
-        status = (homeGamesWon + awayGamesWon) === 9 ? 'completed' : 'in_progress';
+        status = (homeMatchesWon + awayMatchesWon) === 9 ? 'completed' : 'in_progress';
       }
     }
 
     await this.db.run(
       `UPDATE fixtures
-       SET home_games_won = ?,
+       SET home_matches_won = ?,
+           away_matches_won = ?,
+           home_games_won = ?,
            away_games_won = ?,
-           home_sets_won = ?,
-           away_sets_won = ?,
            status = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [homeGamesWon, awayGamesWon, homeSetsWon, awaySetsWon, status, fixtureId]
+      [homeMatchesWon, awayMatchesWon, homeGamesWon, awayGamesWon, status, fixtureId]
     );
   }
 }

@@ -873,18 +873,18 @@ app.put('/api/fixtures/:id/lineups/:side', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id/games/:gameNumber/sets', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id/matches/:matchNumber/games', requireAdmin, async (req, res) => {
   try {
-    const fixture = await fixtureManager.setGameSets(req.params.id, parseInt(req.params.gameNumber, 10), req.body.sets);
+    const fixture = await fixtureManager.setMatchGames(req.params.id, parseInt(req.params.matchNumber, 10), req.body.games);
     res.json(fixture);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-app.put('/api/fixtures/:id/games/sets', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id/matches/games', requireAdmin, async (req, res) => {
   try {
-    const fixture = await fixtureManager.setFixtureGameSets(req.params.id, req.body.games);
+    const fixture = await fixtureManager.setFixtureMatchGames(req.params.id, req.body.matches);
     res.json(fixture);
   } catch (error) {
     res.status(400).json({ error: error.message });

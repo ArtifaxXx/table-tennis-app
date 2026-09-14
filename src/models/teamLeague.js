@@ -52,8 +52,8 @@ class TeamLeagueManager {
     const recentFixtures = await this.db.all(
       `SELECT f.id,
               f.match_date,
-              f.home_games_won,
-              f.away_games_won,
+              f.home_matches_won,
+              f.away_matches_won,
               ht.name as home_team_name,
               at.name as away_team_name,
               CASE
@@ -68,13 +68,13 @@ class TeamLeagueManager {
                    JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                    WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank IN (1,2,3)) < 3
                 ) THEN 'missing_lineups'
-                WHEN (SELECT COUNT(*) FROM fixture_games fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_games'
+                WHEN (SELECT COUNT(*) FROM fixture_matches fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_matches'
                 WHEN EXISTS (
                   SELECT 1
-                  FROM fixture_games fg
+                  FROM fixture_matches fg
                   WHERE fg.fixture_id = f.id
-                    AND (SELECT COUNT(*) FROM fixture_game_sets s WHERE s.fixture_game_id = fg.id) < 3
-                ) THEN 'missing_sets'
+                    AND (SELECT COUNT(*) FROM fixture_match_games s WHERE s.fixture_match_id = fg.id) < 3
+                ) THEN 'missing_games'
                 ELSE 'complete'
               END as completeness_status
        FROM fixtures f
@@ -167,10 +167,10 @@ class TeamLeagueManager {
         played: 0,
         wins: 0,
         losses: 0,
+        matches_won: 0,
+        matches_lost: 0,
         games_won: 0,
         games_lost: 0,
-        sets_won: 0,
-        sets_lost: 0,
       });
     }
 
@@ -182,18 +182,18 @@ class TeamLeagueManager {
       home.played++;
       away.played++;
 
+      home.matches_won += f.home_matches_won || 0;
+      home.matches_lost += f.away_matches_won || 0;
+      away.matches_won += f.away_matches_won || 0;
+      away.matches_lost += f.home_matches_won || 0;
+
       home.games_won += f.home_games_won || 0;
       home.games_lost += f.away_games_won || 0;
       away.games_won += f.away_games_won || 0;
       away.games_lost += f.home_games_won || 0;
 
-      home.sets_won += f.home_sets_won || 0;
-      home.sets_lost += f.away_sets_won || 0;
-      away.sets_won += f.away_sets_won || 0;
-      away.sets_lost += f.home_sets_won || 0;
-
-      const homeWon = (f.home_games_won || 0) > (f.away_games_won || 0);
-      const awayWon = (f.away_games_won || 0) > (f.home_games_won || 0);
+      const homeWon = (f.home_matches_won || 0) > (f.away_matches_won || 0);
+      const awayWon = (f.away_matches_won || 0) > (f.home_matches_won || 0);
 
       if (homeWon) {
         home.wins++;
@@ -206,31 +206,31 @@ class TeamLeagueManager {
 
     const rows = Array.from(base.values());
 
-    // Primary sort: wins desc, then overall games won desc
+    // Primary sort: wins desc, then overall matches won desc
     rows.sort((a, b) => {
       if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.matches_won !== a.matches_won) return b.matches_won - a.matches_won;
       if (b.games_won !== a.games_won) return b.games_won - a.games_won;
-      if (b.sets_won !== a.sets_won) return b.sets_won - a.sets_won;
       return a.team_name.localeCompare(b.team_name);
     });
 
-    // Apply tie-breaker groups (head-to-head games won among tied teams)
+    // Apply tie-breaker groups (head-to-head matches won among tied teams)
     const finalRows = this.applyHeadToHeadTiebreakers(rows, fixtures);
 
     const withDiffs = finalRows.map((r) => ({
       ...r,
+      matches_diff: r.matches_won - r.matches_lost,
       games_diff: r.games_won - r.games_lost,
-      sets_diff: r.sets_won - r.sets_lost,
     }));
 
     const isFullyTied = (a, b) => {
       return (
         a.wins === b.wins &&
         a.losses === b.losses &&
+        a.matches_won === b.matches_won &&
+        a.matches_lost === b.matches_lost &&
         a.games_won === b.games_won &&
-        a.games_lost === b.games_lost &&
-        a.sets_won === b.sets_won &&
-        a.sets_lost === b.sets_lost
+        a.games_lost === b.games_lost
       );
     };
 
@@ -265,7 +265,7 @@ class TeamLeagueManager {
       let j = i + 1;
       while (j < sortedRows.length &&
         sortedRows[j].wins === sortedRows[i].wins &&
-        sortedRows[j].games_won === sortedRows[i].games_won) {
+        sortedRows[j].matches_won === sortedRows[i].matches_won) {
         group.push(sortedRows[j]);
         j++;
       }
@@ -280,7 +280,7 @@ class TeamLeagueManager {
 
       const mini = new Map();
       for (const g of group) {
-        mini.set(g.team_id, { team_id: g.team_id, h2h_games_won: 0 });
+        mini.set(g.team_id, { team_id: g.team_id, h2h_matches_won: 0 });
       }
 
       for (const f of completedFixtures) {
@@ -289,18 +289,18 @@ class TeamLeagueManager {
         const h = mini.get(f.home_team_id);
         const a = mini.get(f.away_team_id);
 
-        h.h2h_games_won += f.home_games_won || 0;
-        a.h2h_games_won += f.away_games_won || 0;
+        h.h2h_matches_won += f.home_matches_won || 0;
+        a.h2h_matches_won += f.away_matches_won || 0;
       }
 
       group.sort((a, b) => {
         const aa = mini.get(a.team_id);
         const bb = mini.get(b.team_id);
 
-        if (bb.h2h_games_won !== aa.h2h_games_won) return bb.h2h_games_won - aa.h2h_games_won;
+        if (bb.h2h_matches_won !== aa.h2h_matches_won) return bb.h2h_matches_won - aa.h2h_matches_won;
 
-        // If still tied, use overall sets won
-        if (b.sets_won !== a.sets_won) return b.sets_won - a.sets_won;
+        // If still tied, use overall games won
+        if (b.games_won !== a.games_won) return b.games_won - a.games_won;
 
         return a.team_name.localeCompare(b.team_name);
       });
@@ -337,7 +337,7 @@ class TeamLeagueManager {
           SELECT DISTINCT player_id
           FROM (
             SELECT fg.home_player_a_id as player_id
-            FROM fixture_games fg
+            FROM fixture_matches fg
             JOIN fixtures f ON fg.fixture_id = f.id
             WHERE f.team_season_id = ?
               AND f.status = 'completed'
@@ -347,7 +347,7 @@ class TeamLeagueManager {
             UNION ALL
 
             SELECT fg.away_player_a_id as player_id
-            FROM fixture_games fg
+            FROM fixture_matches fg
             JOIN fixtures f ON fg.fixture_id = f.id
             WHERE f.team_season_id = ?
               AND f.status = 'completed'
@@ -357,7 +357,7 @@ class TeamLeagueManager {
             UNION ALL
 
             SELECT fg.home_player_b_id as player_id
-            FROM fixture_games fg
+            FROM fixture_matches fg
             JOIN fixtures f ON fg.fixture_id = f.id
             WHERE f.team_season_id = ?
               AND f.status = 'completed'
@@ -367,7 +367,7 @@ class TeamLeagueManager {
             UNION ALL
 
             SELECT fg.away_player_b_id as player_id
-            FROM fixture_games fg
+            FROM fixture_matches fg
             JOIN fixtures f ON fg.fixture_id = f.id
             WHERE f.team_season_id = ?
               AND f.status = 'completed'
@@ -433,8 +433,8 @@ class TeamLeagueManager {
            COALESCE(w.wins, 0) * 100.0 / NULLIF((COALESCE(w.wins, 0) + COALESCE(l.losses, 0)), 0),
            1
          ) as singles_win_pct,
-         COALESCE(s.sets_won, 0) as singles_sets_won,
-         COALESCE(s.sets_lost, 0) as singles_sets_lost,
+         COALESCE(s.games_won, 0) as singles_games_won,
+         COALESCE(s.games_lost, 0) as singles_games_lost,
          COALESCE(dw.wins, 0) as doubles_wins,
          COALESCE(dl.losses, 0) as doubles_losses,
          COALESCE(dw.wins, 0) + COALESCE(dl.losses, 0) as doubles_played,
@@ -459,10 +459,10 @@ class TeamLeagueManager {
              WHEN fg.winner_side = 'away' THEN fg.away_player_a_id
            END as player_id,
            COUNT(*) as wins
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
            ${filterSql}
          GROUP BY player_id
@@ -474,27 +474,27 @@ class TeamLeagueManager {
              WHEN fg.winner_side = 'away' THEN fg.home_player_a_id
            END as player_id,
            COUNT(*) as losses
-         FROM fixture_games fg
+         FROM fixture_matches fg
          JOIN fixtures f ON fg.fixture_id = f.id
          WHERE f.status = 'completed'
-           AND fg.game_type = 'singles'
+           AND fg.match_type = 'singles'
            AND fg.winner_side IN ('home','away')
            ${filterSql}
          GROUP BY player_id
        ) l ON l.player_id = p.id
        LEFT JOIN (
          SELECT player_id,
-                SUM(sets_won) as sets_won,
-                SUM(sets_lost) as sets_lost
+                SUM(games_won) as games_won,
+                SUM(games_lost) as games_lost
          FROM (
            SELECT
              fg.home_player_a_id as player_id,
-             COALESCE(fg.home_sets_won, 0) as sets_won,
-             COALESCE(fg.away_sets_won, 0) as sets_lost
-           FROM fixture_games fg
+             COALESCE(fg.home_games_won, 0) as games_won,
+             COALESCE(fg.away_games_won, 0) as games_lost
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'singles'
+             AND fg.match_type = 'singles'
              AND fg.winner_side IN ('home','away')
              ${filterSql}
 
@@ -502,12 +502,12 @@ class TeamLeagueManager {
 
            SELECT
              fg.away_player_a_id as player_id,
-             COALESCE(fg.away_sets_won, 0) as sets_won,
-             COALESCE(fg.home_sets_won, 0) as sets_lost
-           FROM fixture_games fg
+             COALESCE(fg.away_games_won, 0) as games_won,
+             COALESCE(fg.home_games_won, 0) as games_lost
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'singles'
+             AND fg.match_type = 'singles'
              AND fg.winner_side IN ('home','away')
              ${filterSql}
          ) t
@@ -517,20 +517,20 @@ class TeamLeagueManager {
          SELECT player_id, COUNT(*) as wins
          FROM (
            SELECT fg.home_player_a_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'home'
              ${filterSql}
 
            UNION ALL
 
            SELECT fg.home_player_b_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'home'
              AND fg.home_player_b_id IS NOT NULL
              ${filterSql}
@@ -538,20 +538,20 @@ class TeamLeagueManager {
            UNION ALL
 
            SELECT fg.away_player_a_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'away'
              ${filterSql}
 
            UNION ALL
 
            SELECT fg.away_player_b_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'away'
              AND fg.away_player_b_id IS NOT NULL
              ${filterSql}
@@ -562,20 +562,20 @@ class TeamLeagueManager {
          SELECT player_id, COUNT(*) as losses
          FROM (
            SELECT fg.away_player_a_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'home'
              ${filterSql}
 
            UNION ALL
 
            SELECT fg.away_player_b_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'home'
              AND fg.away_player_b_id IS NOT NULL
              ${filterSql}
@@ -583,20 +583,20 @@ class TeamLeagueManager {
            UNION ALL
 
            SELECT fg.home_player_a_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'away'
              ${filterSql}
 
            UNION ALL
 
            SELECT fg.home_player_b_id as player_id
-           FROM fixture_games fg
+           FROM fixture_matches fg
            JOIN fixtures f ON fg.fixture_id = f.id
            WHERE f.status = 'completed'
-             AND fg.game_type = 'doubles'
+             AND fg.match_type = 'doubles'
              AND fg.winner_side = 'away'
              AND fg.home_player_b_id IS NOT NULL
              ${filterSql}

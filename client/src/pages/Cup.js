@@ -149,7 +149,7 @@ const Cup = () => {
 
             <div className="text-xs text-gray-500">
               {m.fixture_id
-                ? `Score: ${(m.fixture_home_games_won || 0)}-${(m.fixture_away_games_won || 0)}`
+                ? `Score: ${(m.fixture_home_matches_won || 0)}-${(m.fixture_away_matches_won || 0)}`
                 : (isBye ? 'Bye (auto-advanced)' : 'Awaiting teams')}
             </div>
           </div>
@@ -357,7 +357,7 @@ const Cup = () => {
                               <div className="text-xs text-gray-500 mt-1">
                                 {m.fixture_status ? `Status: ${m.fixture_status}` : ''}
                                 {m.fixture_status ? ' · ' : ''}
-                                {`Score: ${(m.fixture_home_games_won || 0)}-${(m.fixture_away_games_won || 0)}`}
+                                {`Score: ${(m.fixture_home_matches_won || 0)}-${(m.fixture_away_matches_won || 0)}`}
                               </div>
                             ) : isBye ? (
                               <div className="text-xs text-gray-500 mt-1">Bye (auto-advanced)</div>

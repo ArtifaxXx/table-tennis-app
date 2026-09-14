@@ -172,15 +172,15 @@ const Fixtures = () => {
       complete: 'bg-green-50 text-green-800 border-green-200',
       violation: 'bg-red-50 text-red-800 border-red-200',
       missing_lineups: 'bg-gray-50 text-gray-700 border-gray-200',
+      missing_matches: 'bg-gray-50 text-gray-700 border-gray-200',
       missing_games: 'bg-gray-50 text-gray-700 border-gray-200',
-      missing_sets: 'bg-gray-50 text-gray-700 border-gray-200',
     };
     const labels = {
       complete: 'Correct',
       violation: 'Violation',
       missing_lineups: 'Lineups',
+      missing_matches: 'Matches',
       missing_games: 'Games',
-      missing_sets: 'Sets',
     };
     if (!c) return null;
 
@@ -298,7 +298,7 @@ const Fixtures = () => {
                   <th className="cursor-pointer" onClick={() => requestSort('away_team_name', (f) => normalizeTeamName(f.away_team_name))}>Away{sortIndicator(sortConfig, 'away_team_name')}</th>
                   <th className="cursor-pointer" onClick={() => requestSort('status')}>Status{sortIndicator(sortConfig, 'status')}</th>
                   <th className="cursor-pointer" onClick={() => requestSort('completeness_status')}>VALIDATION{sortIndicator(sortConfig, 'completeness_status')}</th>
-                  <th className="cursor-pointer" onClick={() => requestSort('home_games_won', (f) => (f.home_games_won || 0) - (f.away_games_won || 0))}>Result{sortIndicator(sortConfig, 'home_games_won')}</th>
+                  <th className="cursor-pointer" onClick={() => requestSort('home_matches_won', (f) => (f.home_matches_won || 0) - (f.away_matches_won || 0))}>Result{sortIndicator(sortConfig, 'home_matches_won')}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -337,7 +337,7 @@ const Fixtures = () => {
                     <td>{completenessBadge(f.completeness_status)}</td>
                     <td>
                       {f.status === 'completed' || f.status === 'in_progress'
-                        ? `${f.home_games_won}-${f.away_games_won}`
+                        ? `${f.home_matches_won}-${f.away_matches_won}`
                         : '-'}
                     </td>
                     <td>

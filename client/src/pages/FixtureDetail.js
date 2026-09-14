@@ -7,14 +7,14 @@ import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
-const emptySet = () => ({ home_points: 0, away_points: 0 });
-const emptySets5 = () => [emptySet(), emptySet(), emptySet(), emptySet(), emptySet()];
+const emptyGame = () => ({ home_points: 0, away_points: 0 });
+const emptyGames5 = () => [emptyGame(), emptyGame(), emptyGame(), emptyGame(), emptyGame()];
 
-const winnerSideFromSets = (sets) => {
-  if (!Array.isArray(sets)) return null;
+const winnerSideFromGames = (games) => {
+  if (!Array.isArray(games)) return null;
   let homeWins = 0;
   let awayWins = 0;
-  for (const s of sets) {
+  for (const s of games) {
     const h = Number(s?.home_points) || 0;
     const a = Number(s?.away_points) || 0;
     if (h === 0 && a === 0) continue;
@@ -36,7 +36,7 @@ const FixtureDetail = () => {
   const [loading, setLoading] = useState(true);
   const [homeSelection, setHomeSelection] = useState(['', '', '']);
   const [awaySelection, setAwaySelection] = useState(['', '', '']);
-  const [editedSetsByGameNumber, setEditedSetsByGameNumber] = useState({});
+  const [editedGamesByMatchNumber, setEditedGamesByMatchNumber] = useState({});
   const [forfeitWinner, setForfeitWinner] = useState('home');
 
   const canEdit = !!isAdmin && fixture?.season_status === 'active' && !fixture?.forfeited;
@@ -69,16 +69,16 @@ const FixtureDetail = () => {
 
     const byNumber = {};
     for (let n = 1; n <= 9; n++) {
-      byNumber[n] = emptySets5();
+      byNumber[n] = emptyGames5();
     }
-    for (const g of f.data.games || []) {
-      const base = Array.isArray(g.sets) && g.sets.length > 0
-        ? g.sets.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
+    for (const g of f.data.matches || []) {
+      const base = Array.isArray(g.games) && g.games.length > 0
+        ? g.games.map((s) => ({ home_points: s.home_points, away_points: s.away_points }))
         : [];
-      while (base.length < 5) base.push(emptySet());
-      byNumber[g.game_number] = base.slice(0, 5);
+      while (base.length < 5) base.push(emptyGame());
+      byNumber[g.match_number] = base.slice(0, 5);
     }
-    setEditedSetsByGameNumber(byNumber);
+    setEditedGamesByMatchNumber(byNumber);
 
     if (f.data) {
       const winnerId = f.data.forfeit_winner_team_id;
@@ -99,7 +99,7 @@ const FixtureDetail = () => {
     const label = forfeitWinner === 'away' ? fixture.away_team_name : fixture.home_team_name;
     const score = (fixture.match_type || 'league') === 'cup' ? '5-0' : '9-0';
 
-    if (!window.confirm(`Forfeit this fixture? Winner will be ${label} (${score}). This clears any lineups/games/sets.`)) {
+    if (!window.confirm(`Forfeit this fixture? Winner will be ${label} (${score}). This clears any lineups/matches/games.`)) {
       return;
     }
 
@@ -134,10 +134,10 @@ const FixtureDetail = () => {
   const saveFixture = async () => {
     if (!canEdit) return;
 
-    const games = Array.from({ length: 9 }, (_, i) => i + 1)
-      .map((gameNumber) => ({
-        game_number: gameNumber,
-        sets: editedSetsByGameNumber[gameNumber] || emptySets5(),
+    const matches = Array.from({ length: 9 }, (_, i) => i + 1)
+      .map((matchNumber) => ({
+        match_number: matchNumber,
+        games: editedGamesByMatchNumber[matchNumber] || emptyGames5(),
       }));
 
     try {
@@ -146,10 +146,10 @@ const FixtureDetail = () => {
         axios.put(`/api/fixtures/${id}/lineups/away`, { playerIds: awaySelection }),
       ]);
 
-      // Ensure games exist before attempting to save sets.
+      // Ensure matches exist before attempting to save games.
       await refresh();
 
-      await axios.put(`/api/fixtures/${id}/games/sets`, { games });
+      await axios.put(`/api/fixtures/${id}/matches/games`, { matches });
       await refresh();
       toast.success('Save successful');
     } catch (e) {
@@ -158,10 +158,10 @@ const FixtureDetail = () => {
     }
   };
 
-  const onChangeGameSets = useCallback((gameNumber, nextSets) => {
-    setEditedSetsByGameNumber((prev) => ({
+  const onChangeMatchGames = useCallback((matchNumber, nextGames) => {
+    setEditedGamesByMatchNumber((prev) => ({
       ...prev,
-      [gameNumber]: nextSets,
+      [matchNumber]: nextGames,
     }));
   }, []);
 
@@ -282,37 +282,37 @@ const FixtureDetail = () => {
     );
   };
 
-  const gamesByNumber = useMemo(() => {
+  const matchesByNumber = useMemo(() => {
     const m = new Map();
-    for (const g of fixture?.games || []) {
-      m.set(g.game_number, g);
+    for (const g of fixture?.matches || []) {
+      m.set(g.match_number, g);
     }
     return m;
-  }, [fixture?.games]);
+  }, [fixture?.matches]);
 
-  const displayGames = useMemo(() => {
+  const displayMatches = useMemo(() => {
     const typeByNumber = (n) => ([1, 2, 3, 7, 8, 9].includes(n) ? 'singles' : 'doubles');
     const out = [];
     for (let n = 1; n <= 9; n++) {
-      const existing = gamesByNumber.get(n);
+      const existing = matchesByNumber.get(n);
       out.push(
         existing || {
           id: `virtual-${n}`,
-          game_number: n,
-          game_type: typeByNumber(n),
-          home_sets_won: 0,
-          away_sets_won: 0,
+          match_number: n,
+          match_type: typeByNumber(n),
+          home_games_won: 0,
+          away_games_won: 0,
           winner_side: null,
         }
       );
     }
     return out;
-  }, [gamesByNumber]);
+  }, [matchesByNumber]);
 
-  const cupStopGameIndex = useMemo(() => {
+  const cupStopMatchIndex = useMemo(() => {
     if ((fixture?.match_type || 'league') !== 'cup') return null;
 
-    const byNum = new Map((fixture?.games || []).map((g) => [Number(g.game_number), g]));
+    const byNum = new Map((fixture?.matches || []).map((g) => [Number(g.match_number), g]));
     let homeWins = 0;
     let awayWins = 0;
     let stop = null;
@@ -320,7 +320,7 @@ const FixtureDetail = () => {
     for (let n = 1; n <= 9; n++) {
       const g = byNum.get(n);
       const backendWinner = g?.winner_side;
-      const localWinner = winnerSideFromSets(editedSetsByGameNumber?.[n]);
+      const localWinner = winnerSideFromGames(editedGamesByMatchNumber?.[n]);
       const winner = backendWinner === 'home' || backendWinner === 'away' ? backendWinner : localWinner;
 
       if (winner === 'home') homeWins++;
@@ -333,17 +333,17 @@ const FixtureDetail = () => {
     }
 
     return stop;
-  }, [fixture, editedSetsByGameNumber]);
+  }, [fixture, editedGamesByMatchNumber]);
 
-  const cupFirstUndecidedGameIndex = useMemo(() => {
+  const cupFirstUndecidedMatchIndex = useMemo(() => {
     if ((fixture?.match_type || 'league') !== 'cup') return null;
-    const byNum = new Map((fixture?.games || []).map((g) => [Number(g.game_number), g]));
+    const byNum = new Map((fixture?.matches || []).map((g) => [Number(g.match_number), g]));
 
     const isDecided = (n) => {
       const g = byNum.get(n);
       if (g?.winner_side === 'home' || g?.winner_side === 'away') return true;
-      const localSets = editedSetsByGameNumber?.[n];
-      const localWinner = winnerSideFromSets(localSets);
+      const localGames = editedGamesByMatchNumber?.[n];
+      const localWinner = winnerSideFromGames(localGames);
       return localWinner === 'home' || localWinner === 'away';
     };
 
@@ -351,7 +351,7 @@ const FixtureDetail = () => {
       if (!isDecided(n)) return n - 1;
     }
     return 8;
-  }, [fixture, editedSetsByGameNumber]);
+  }, [fixture, editedGamesByMatchNumber]);
 
   if (loading) return <div className="text-center py-8">Loading fixture...</div>;
   if (!fixture) return <div className="text-center py-8">Fixture not found</div>;
@@ -373,7 +373,7 @@ const FixtureDetail = () => {
         right={
           <div className="flex items-center gap-3">
             <div className="font-medium whitespace-nowrap">
-              Score: {fixture.status !== 'scheduled' ? `${fixture.home_games_won}-${fixture.away_games_won}` : '-'}
+              Score: {fixture.status !== 'scheduled' ? `${fixture.home_matches_won}-${fixture.away_matches_won}` : '-'}
             </div>
             <span
               className={`px-2 py-1 text-xs rounded-full ${
@@ -402,7 +402,7 @@ const FixtureDetail = () => {
               <div className="text-sm font-semibold text-gray-800">Forfeit</div>
               <div className="text-sm text-gray-600">
                 Marks the fixture completed as {((fixture.match_type || 'league') === 'cup') ? '5-0' : '9-0'} to the selected team.
-                No lineups or individual games/sets are recorded.
+                No lineups or individual matches/games are recorded.
               </div>
             </div>
 
@@ -439,19 +439,19 @@ const FixtureDetail = () => {
       </div>
 
       <Card>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">9 games (best of 5)</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">9 matches (best of 5)</h3>
         <div className="space-y-4">
-          {displayGames.map((g) => (
-            <GameCard
+          {displayMatches.map((g) => (
+            <MatchCard
               key={g.id}
-              game={g}
+              match={g}
               canEdit={canEdit}
               slotName={slotName}
-              sets={editedSetsByGameNumber[g.game_number] || emptySets5()}
-              onChangeSets={(nextSets) => onChangeGameSets(g.game_number, nextSets)}
+              games={editedGamesByMatchNumber[g.match_number] || emptyGames5()}
+              onChangeGames={(nextGames) => onChangeMatchGames(g.match_number, nextGames)}
               matchType={fixture.match_type || 'league'}
-              cupStopGameIndex={cupStopGameIndex}
-              cupFirstUndecidedGameIndex={cupFirstUndecidedGameIndex}
+              cupStopMatchIndex={cupStopMatchIndex}
+              cupFirstUndecidedMatchIndex={cupFirstUndecidedMatchIndex}
             />
           ))}
         </div>
@@ -460,12 +460,12 @@ const FixtureDetail = () => {
   );
 };
 
-const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupStopGameIndex, cupFirstUndecidedGameIndex }) => {
-  const isGameLocked = () => {
+const MatchCard = ({ match, canEdit, games, onChangeGames, slotName, matchType, cupStopMatchIndex, cupFirstUndecidedMatchIndex }) => {
+  const isMatchLocked = () => {
     if (matchType !== 'cup') return false;
-    if (cupFirstUndecidedGameIndex != null && (game.game_number - 1) > cupFirstUndecidedGameIndex) return true;
-    if (cupStopGameIndex == null) return false;
-    return (game.game_number - 1) > cupStopGameIndex;
+    if (cupFirstUndecidedMatchIndex != null && (match.match_number - 1) > cupFirstUndecidedMatchIndex) return true;
+    if (cupStopMatchIndex == null) return false;
+    return (match.match_number - 1) > cupStopMatchIndex;
   };
   const parsePoints = (value) => {
     const parsed = Number(value);
@@ -478,7 +478,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
     return 9;
   };
   const slotSpec = useMemo(() => {
-    const n = Number(game.game_number);
+    const n = Number(match.match_number);
     const map = {
       1: { home: ['H3'], away: ['A2'] },
       2: { home: ['H2'], away: ['A1'] },
@@ -491,7 +491,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
       9: { home: ['H1'], away: ['A1'] },
     };
     return map[n] || { home: [], away: [] };
-  }, [game.game_number]);
+  }, [match.match_number]);
 
   const title = () => {
     const homeLabel = slotSpec.home.join(' / ');
@@ -511,8 +511,8 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
     let awayWins = 0;
     let decidedAfterIndex = null;
 
-    for (let i = 0; i < sets.length; i++) {
-      const s = sets[i];
+    for (let i = 0; i < games.length; i++) {
+      const s = games[i];
       const h = Number(s?.home_points) || 0;
       const a = Number(s?.away_points) || 0;
       if (h === 0 && a === 0) continue;
@@ -526,14 +526,14 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
     }
 
     return { homeWins, awayWins, decidedAfterIndex };
-  }, [sets]);
+  }, [games]);
 
-  const isSetLocked = (idx) => {
+  const isGameLocked = (idx) => {
     if (decision.decidedAfterIndex == null) return false;
     return idx > decision.decidedAfterIndex;
   };
 
-  const setSideClasses = (homePoints, awayPoints) => {
+  const gameSideClasses = (homePoints, awayPoints) => {
     const h = Number(homePoints) || 0;
     const a = Number(awayPoints) || 0;
     if (h === 0 && a === 0) {
@@ -550,31 +550,31 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
   };
 
   return (
-    <div className={`border rounded-lg p-4 ${isGameLocked() ? 'bg-gray-50 opacity-60' : ''}`}>
+    <div className={`border rounded-lg p-4 ${isMatchLocked() ? 'bg-gray-50 opacity-60' : ''}`}>
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-sm text-gray-500">Game {game.game_number} ({game.game_type})</div>
+          <div className="text-sm text-gray-500">Match {match.match_number} ({match.match_type})</div>
           <div className="font-medium text-gray-800">{title()}</div>
           <div className="text-sm text-gray-600">
-            Sets: {game.home_sets_won}-{game.away_sets_won}
-            {game.winner_side ? ` (winner: ${game.winner_side})` : ''}
+            Games: {match.home_games_won}-{match.away_games_won}
+            {match.winner_side ? ` (winner: ${match.winner_side})` : ''}
           </div>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2">
-        {sets.map((s, idx) => (
-          <div key={idx} className={`rounded p-2 ${isSetLocked(idx) ? 'bg-gray-100 opacity-60' : 'bg-gray-50'}`}>
-            <div className="text-xs text-gray-500 mb-1">Set {idx + 1}</div>
+        {games.map((s, idx) => (
+          <div key={idx} className={`rounded p-2 ${isGameLocked(idx) ? 'bg-gray-100 opacity-60' : 'bg-gray-50'}`}>
+            <div className="text-xs text-gray-500 mb-1">Game {idx + 1}</div>
             <div className="grid grid-rows-2 gap-2">
               <input
-                className={`input border ${setSideClasses(s.home_points, s.away_points).home}`}
+                className={`input border ${gameSideClasses(s.home_points, s.away_points).home}`}
                 type="number"
                 min="0"
                 value={s.home_points}
-                disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
+                disabled={!canEdit || isGameLocked(idx) || isMatchLocked()}
                 onChange={(e) => {
-                  const next = [...sets];
+                  const next = [...games];
                   const nextValue = parsePoints(e.target.value || '0');
                   const previousHome = parsePoints(next[idx]?.home_points ?? 0);
                   const currentAway = parsePoints(next[idx]?.away_points ?? 0);
@@ -587,17 +587,17 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
                     home_points: nextValue,
                     away_points: nextAway,
                   };
-                  onChangeSets(next);
+                  onChangeGames(next);
                 }}
               />
               <input
-                className={`input border ${setSideClasses(s.home_points, s.away_points).away}`}
+                className={`input border ${gameSideClasses(s.home_points, s.away_points).away}`}
                 type="number"
                 min="0"
                 value={s.away_points}
-                disabled={!canEdit || isSetLocked(idx) || isGameLocked()}
+                disabled={!canEdit || isGameLocked(idx) || isMatchLocked()}
                 onChange={(e) => {
-                  const next = [...sets];
+                  const next = [...games];
                   const nextValue = parsePoints(e.target.value || '0');
                   const previousAway = parsePoints(next[idx]?.away_points ?? 0);
                   const currentHome = parsePoints(next[idx]?.home_points ?? 0);
@@ -610,7 +610,7 @@ const GameCard = ({ game, canEdit, sets, onChangeSets, slotName, matchType, cupS
                     away_points: nextValue,
                     home_points: nextHome,
                   };
-                  onChangeSets(next);
+                  onChangeGames(next);
                 }}
               />
             </div>
