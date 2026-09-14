@@ -1,5 +1,16 @@
 import { useMemo, useState } from 'react';
 
+const ISO_DATE_LIKE = /^\d{4}-\d{2}-\d{2}([T ].*)?$/;
+
+const toTime = (v) => {
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'string' && ISO_DATE_LIKE.test(v.trim())) {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+};
+
 const defaultCompare = (a, b) => {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -7,9 +18,9 @@ const defaultCompare = (a, b) => {
 
   if (typeof a === 'number' && typeof b === 'number') return a - b;
 
-  const da = a instanceof Date ? a : (typeof a === 'string' && !Number.isNaN(Date.parse(a)) ? new Date(a) : null);
-  const db = b instanceof Date ? b : (typeof b === 'string' && !Number.isNaN(Date.parse(b)) ? new Date(b) : null);
-  if (da && db) return da.getTime() - db.getTime();
+  const da = toTime(a);
+  const db = toTime(b);
+  if (da != null && db != null) return da - db;
 
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 };
