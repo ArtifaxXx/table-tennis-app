@@ -16,6 +16,7 @@ import ActivityLog from './pages/ActivityLog';
 import { DivisionProvider } from './context/DivisionContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { ThemeProvider } from './context/ThemeContext';
 import ToastViewport from './components/ToastViewport';
 import BuildInfoWidget from './components/BuildInfoWidget';
 
@@ -32,7 +33,8 @@ function App() {
     <ToastProvider>
       <AuthProvider>
         <DivisionProvider>
-          <div className="min-h-screen bg-gray-50">
+          <ThemeProvider>
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
             <RouteTracker />
             <Navbar />
             <main className="container mx-auto px-4 py-8">
@@ -56,6 +58,7 @@ function App() {
             <ToastViewport />
             <BuildInfoWidget />
           </div>
+          </ThemeProvider>
         </DivisionProvider>
       </AuthProvider>
     </ToastProvider>

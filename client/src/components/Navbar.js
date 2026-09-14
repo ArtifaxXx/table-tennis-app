@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper, ScrollText } from 'lucide-react';
+import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper, ScrollText, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useTheme } from '../context/ThemeContext';
 
 const ADMIN_PASSWORD_KEY = 'tt-league:adminPassword:v1';
 const ADMIN_NAME_KEY = 'tt-league:adminName:v1';
@@ -12,8 +13,10 @@ const Navbar = () => {
   const location = useLocation();
   const auth = useAuth();
   const toast = useToast();
+  const theme = useTheme();
   const [role, setRole] = useState('viewer');
   const [authOpen, setAuthOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -156,9 +159,11 @@ const Navbar = () => {
 
   useEffect(() => {
     setMobileOpen(false);
+    setUserMenuOpen(false);
   }, [location.pathname]);
 
   const openAuth = () => {
+    setUserMenuOpen(false);
     setPasswordInput('');
     setNewPassword('');
     try {
@@ -239,20 +244,20 @@ const Navbar = () => {
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || role === 'admin');
 
   return (
-    <nav className="bg-white shadow-lg">
+    <nav className="bg-white dark:bg-gray-800 shadow-lg">
       <div className="container mx-auto px-4">
         <div className="py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
-                className="md:hidden p-2 rounded hover:bg-gray-100"
+                className="md:hidden p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                 onClick={() => setMobileOpen((v) => !v)}
                 aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               >
                 {mobileOpen ? <X size={22} /> : <Menu size={22} />}
               </button>
-              <h1 className="text-lg md:text-xl font-bold text-gray-800 truncate">
+              <h1 className="text-lg md:text-xl font-bold text-gray-800 dark:text-gray-100 truncate">
                 <span className="hidden sm:inline">Bray & District Table Tennis League</span>
                 <span className="sm:hidden">Bray TT League</span>
               </h1>
@@ -268,18 +273,60 @@ const Navbar = () => {
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="relative flex items-center gap-2">
               <button
                 type="button"
-                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100"
-                onClick={openAuth}
-                title={role === 'admin' ? 'Admin enabled (click to manage)' : 'Viewer mode (click to enable admin)'}
+                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                title={role === 'admin' ? 'Admin enabled (click for options)' : 'Viewer mode (click for options)'}
               >
-                <span className={`hidden sm:inline text-xs font-semibold ${role === 'admin' ? 'text-green-700' : 'text-gray-600'}`}>
+                <span className={`hidden sm:inline text-xs font-semibold ${role === 'admin' ? 'text-green-700 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'}`}>
                   {role === 'admin' ? 'Admin' : 'Viewer'}
                 </span>
-                <UserCircle size={22} className={role === 'admin' ? 'text-green-700' : 'text-gray-700'} />
+                <UserCircle size={22} className={role === 'admin' ? 'text-green-700 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'} />
               </button>
+
+              {userMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-40 p-2 space-y-2">
+                  <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                    {role === 'admin' ? `Signed in as ${getStoredAdminName() || 'admin'}` : 'You are viewing as a guest'}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => theme.toggle()}
+                    className="w-full flex items-center justify-between rounded-md px-2 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <span className="flex items-center gap-2">
+                      {theme.dark ? <Moon size={16} /> : <Sun size={16} />}
+                      {theme.dark ? 'Dark mode' : 'Light mode'}
+                    </span>
+                    <span className={`h-4 w-8 rounded-full ${theme.dark ? 'bg-blue-600' : 'bg-gray-300'} relative`}>
+                      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${theme.dark ? 'left-4' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-1" />
+
+                  {role === 'admin' ? (
+                    <button
+                      type="button"
+                      onClick={openAuth}
+                      className="w-full text-left rounded-md px-2 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Admin settings
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openAuth}
+                      className="w-full text-left rounded-md px-2 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Enable admin
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -331,9 +378,9 @@ const Navbar = () => {
 
       {authOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">Access</h2>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Access</h2>
               <button type="button" className="text-gray-500 hover:text-gray-700" onClick={closeAuth}>
                 ✕
               </button>
