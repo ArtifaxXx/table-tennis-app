@@ -31,7 +31,7 @@ const describeRow = (row) => {
 };
 
 const ActivityLog = () => {
-  const { isAdmin } = useAuth();
+  const { isSystemAdmin } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [eventType, setEventType] = useState('');
@@ -58,15 +58,15 @@ const ActivityLog = () => {
   );
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     setLoading(true);
     fetchLogs(0, false);
-  }, [isAdmin, fetchLogs]);
+  }, [isSystemAdmin, fetchLogs]);
 
-  if (!isAdmin) {
+  if (!isSystemAdmin) {
     return (
       <Card>
-        <div className="text-center py-8 text-gray-600">Admin or steward access required to view the activity log.</div>
+        <div className="text-center py-8 text-gray-600">Admin access required to view the activity log.</div>
       </Card>
     );
   }

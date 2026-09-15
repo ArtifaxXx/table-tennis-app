@@ -287,7 +287,7 @@ const Navbar = () => {
     { path: '/activity', label: 'Activity', icon: ScrollText, adminOnly: true },
   ];
 
-  const visibleNavItems = navItems.filter((item) => !item.adminOnly || role !== 'viewer');
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || role === 'admin');
 
   return (
     <nav className="bg-white shadow-lg">

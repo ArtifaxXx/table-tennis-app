@@ -59,11 +59,11 @@ describe('steward permissions', () => {
     expect(team.status).toBe(201);
   });
 
-  test('steward can read activity logs and download backups', async () => {
+  test('steward cannot read activity logs but can download backups', async () => {
     const logs = await request(app)
       .get('/api/admin/activity-logs')
       .set(stewardHeaders());
-    expect(logs.status).toBe(200);
+    expect(logs.status).toBe(403);
 
     const backup = await request(app)
       .get('/api/admin/database-backup')

@@ -4,6 +4,7 @@ const { execFileSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const outPath = path.resolve(__dirname, '../public/build-info.json');
+const packageInfo = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
 function safeExecGit(args) {
   const candidates = ['git', 'C:\\Program Files\\Git\\cmd\\git.exe'];
@@ -39,6 +40,7 @@ const changes = rawLog
   : [];
 
 const payload = {
+  version: packageInfo.version,
   sha: sha || null,
   branch: branch || null,
   builtAt,

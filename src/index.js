@@ -326,7 +326,7 @@ app.post('/api/track', trackLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/admin/activity-logs', requireEditor, async (req, res) => {
+app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
