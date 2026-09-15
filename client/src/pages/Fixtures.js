@@ -10,6 +10,10 @@ import PageHeader from '../components/PageHeader';
 import DivisionSelector from '../components/DivisionSelector';
 import { VIOLATION_TOOLTIP_TEXT } from '../utils/violationTooltipText';
 
+const pad2 = (n) => String(n).padStart(2, '0');
+const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const normalizeTeamName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
 const Fixtures = () => {
   const toast = useToast();
   const { isAdmin } = useAuth();
@@ -78,10 +82,6 @@ const Fixtures = () => {
     calendarInitRef.current = true;
   }, [fixtures]);
 
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  const normalizeTeamName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
   const teamOptions = React.useMemo(() => {
     const set = new Set();
     for (const fixture of fixtures) {
@@ -124,7 +124,7 @@ const Fixtures = () => {
       entries.sort((a, b) => new Date(a.match_date) - new Date(b.match_date));
     }
     return map;
-  }, [fixtures]);
+  }, [filteredFixtures]);
 
   const unscheduledFixtures = React.useMemo(
     () => filteredFixtures.filter((f) => !f.match_date),

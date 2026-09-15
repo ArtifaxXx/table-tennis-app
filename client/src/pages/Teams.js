@@ -129,11 +129,6 @@ const Teams = () => {
 
   const didInitRef = useRef(false);
 
-  const selectedTeam = useMemo(
-    () => teams.find((t) => t.id === selectedTeamId) || null,
-    [teams, selectedTeamId]
-  );
-
   const filteredTeams = useMemo(() => {
     const term = String(teamSearchTerm || '').trim().toLowerCase();
     if (!term) return teams;
