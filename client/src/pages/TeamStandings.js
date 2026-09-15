@@ -108,7 +108,7 @@ const TeamStandings = () => {
       </Card>
 
       <div className="text-sm text-gray-500">
-        Tie-breakers: wins, matches won, head-to-head matches won among tied teams, games won.
+        Ranking is ordered by fixture wins, matches won, then games won. Exact ties share the same rank.
       </div>
     </div>
   );

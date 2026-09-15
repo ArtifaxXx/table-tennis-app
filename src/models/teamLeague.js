@@ -206,7 +206,6 @@ class TeamLeagueManager {
 
     const rows = Array.from(base.values());
 
-    // Primary sort: wins desc, then overall matches won desc
     rows.sort((a, b) => {
       if (b.wins !== a.wins) return b.wins - a.wins;
       if (b.matches_won !== a.matches_won) return b.matches_won - a.matches_won;
@@ -214,25 +213,17 @@ class TeamLeagueManager {
       return a.team_name.localeCompare(b.team_name);
     });
 
-    // Apply tie-breaker groups (head-to-head matches won among tied teams)
-    const finalRows = this.applyHeadToHeadTiebreakers(rows, fixtures);
-
-    const withDiffs = finalRows.map((r) => ({
+    const withDiffs = rows.map((r) => ({
       ...r,
       matches_diff: r.matches_won - r.matches_lost,
       games_diff: r.games_won - r.games_lost,
     }));
 
-    const isFullyTied = (a, b) => {
-      return (
-        a.wins === b.wins &&
-        a.losses === b.losses &&
-        a.matches_won === b.matches_won &&
-        a.matches_lost === b.matches_lost &&
-        a.games_won === b.games_won &&
-        a.games_lost === b.games_lost
-      );
-    };
+    const isFullyTied = (a, b) => (
+      a.wins === b.wins &&
+      a.matches_won === b.matches_won &&
+      a.games_won === b.games_won
+    );
 
     // Competition ranking: 1,2,2,4 (ties share the same place)
     const ranked = [];
@@ -255,61 +246,6 @@ class TeamLeagueManager {
     }
 
     return ranked;
-  }
-
-  applyHeadToHeadTiebreakers(sortedRows, completedFixtures) {
-    const result = [];
-    let i = 0;
-    while (i < sortedRows.length) {
-      const group = [sortedRows[i]];
-      let j = i + 1;
-      while (j < sortedRows.length &&
-        sortedRows[j].wins === sortedRows[i].wins &&
-        sortedRows[j].matches_won === sortedRows[i].matches_won) {
-        group.push(sortedRows[j]);
-        j++;
-      }
-
-      if (group.length <= 1) {
-        result.push(...group);
-        i = j;
-        continue;
-      }
-
-      const tiedIds = new Set(group.map(g => g.team_id));
-
-      const mini = new Map();
-      for (const g of group) {
-        mini.set(g.team_id, { team_id: g.team_id, h2h_matches_won: 0 });
-      }
-
-      for (const f of completedFixtures) {
-        if (!tiedIds.has(f.home_team_id) || !tiedIds.has(f.away_team_id)) continue;
-
-        const h = mini.get(f.home_team_id);
-        const a = mini.get(f.away_team_id);
-
-        h.h2h_matches_won += f.home_matches_won || 0;
-        a.h2h_matches_won += f.away_matches_won || 0;
-      }
-
-      group.sort((a, b) => {
-        const aa = mini.get(a.team_id);
-        const bb = mini.get(b.team_id);
-
-        if (bb.h2h_matches_won !== aa.h2h_matches_won) return bb.h2h_matches_won - aa.h2h_matches_won;
-
-        // If still tied, use overall games won
-        if (b.games_won !== a.games_won) return b.games_won - a.games_won;
-
-        return a.team_name.localeCompare(b.team_name);
-      });
-
-      result.push(...group);
-      i = j;
-    }
-
-    return result;
   }
 
   async getPlayerRankings(teamSeasonId, divisionId = null) {
@@ -607,18 +543,34 @@ class TeamLeagueManager {
       [...basePlayersParams, ...teamParams, ...params]
     );
 
-    const list = stats;
+    const list = stats
+      .map((row) => ({
+        ...row,
+        matches_diff: Number(row.singles_wins || 0) - Number(row.singles_losses || 0),
+        games_diff: Number(row.singles_games_won || 0) - Number(row.singles_games_lost || 0),
+      }))
+      .sort((a, b) => {
+        if (b.singles_wins !== a.singles_wins) return b.singles_wins - a.singles_wins;
+        if (b.matches_diff !== a.matches_diff) return b.matches_diff - a.matches_diff;
+        if (b.games_diff !== a.games_diff) return b.games_diff - a.games_diff;
+        return a.player_name.localeCompare(b.player_name);
+      });
 
     // Competition ranking: ties share same rank, next rank skips
     let currentRank = 0;
-    let lastWins = null;
+    let previous = null;
     for (let i = 0; i < list.length; i++) {
       const row = list[i];
-      if (lastWins === null || row.singles_wins !== lastWins) {
+      if (
+        !previous ||
+        row.singles_wins !== previous.singles_wins ||
+        row.matches_diff !== previous.matches_diff ||
+        row.games_diff !== previous.games_diff
+      ) {
         currentRank = i + 1;
-        lastWins = row.singles_wins;
       }
       row.rank = currentRank;
+      previous = row;
     }
 
     return list;

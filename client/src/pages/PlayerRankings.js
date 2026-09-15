@@ -82,8 +82,10 @@ const PlayerRankings = () => {
                 <th className="cursor-pointer" onClick={() => requestSort('singles_wins')}>Singles Wins{sortIndicator(sortConfig, 'singles_wins')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_losses')}>Singles Losses{sortIndicator(sortConfig, 'singles_losses')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_played')}>Singles Played{sortIndicator(sortConfig, 'singles_played')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('matches_diff')}>Match +/-{sortIndicator(sortConfig, 'matches_diff')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_games_won')}>Games Won{sortIndicator(sortConfig, 'singles_games_won')}</th>
                 <th className="cursor-pointer" onClick={() => requestSort('singles_games_lost')}>Games Lost{sortIndicator(sortConfig, 'singles_games_lost')}</th>
+                <th className="cursor-pointer" onClick={() => requestSort('games_diff')}>Game +/-{sortIndicator(sortConfig, 'games_diff')}</th>
               </tr>
             </thead>
             <tbody>
@@ -95,8 +97,10 @@ const PlayerRankings = () => {
                   <td className="text-green-700 font-medium">{r.singles_wins}</td>
                   <td className="text-red-700 font-medium">{r.singles_losses}</td>
                   <td>{r.singles_played}</td>
+                  <td className="font-medium">{r.matches_diff > 0 ? '+' : ''}{r.matches_diff}</td>
                   <td className="font-medium">{r.singles_games_won}</td>
                   <td>{r.singles_games_lost}</td>
+                  <td className="font-medium">{r.games_diff > 0 ? '+' : ''}{r.games_diff}</td>
                 </tr>
               ))}
             </tbody>
@@ -106,7 +110,7 @@ const PlayerRankings = () => {
       </Card>
 
       <div className="text-sm text-gray-500">
-        Ranking is based on singles matches won. Ties share the same rank.
+        Ranking is ordered by singles matches won, match difference, then game difference. Exact ties share the same rank.
       </div>
     </div>
   );
