@@ -25,7 +25,6 @@ const Navbar = () => {
   const [resetPasswordInput, setResetPasswordInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
-  const [seedTokenInput, setSeedTokenInput] = useState('');
 
   const getStoredAdminName = () => {
     try {
@@ -96,6 +95,7 @@ const Navbar = () => {
   };
   const [authLoading, setAuthLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   const refreshRole = async () => {
@@ -119,14 +119,37 @@ const Navbar = () => {
     }
   };
 
+  const downloadDatabaseBackup = async () => {
+    if (backupLoading) return;
+
+    setBackupLoading(true);
+    try {
+      const response = await axios.get('/api/admin/database-backup', { responseType: 'blob' });
+      const disposition = response.headers['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = filenameMatch?.[1] || `league-backup-${new Date().toISOString().slice(0, 10)}.db`;
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Database backup downloaded');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   const restorePremierSnapshot = async () => {
-    if (restoreLoading || !seedTokenInput) return;
+    if (restoreLoading) return;
 
     setRestoreLoading(true);
     try {
-      await axios.post('/api/admin/restore-prem-snapshot', {}, {
-        headers: { 'X-Seed-Token': seedTokenInput },
-      });
+      await axios.post('/api/admin/restore-prem-snapshot', {});
       toast.success('Premier Division snapshot restored');
       window.location.reload();
     } catch (e) {
@@ -134,7 +157,6 @@ const Navbar = () => {
     } finally {
       setRestoreLoading(false);
       setConfirmRestore(false);
-      setSeedTokenInput('');
     }
   };
 
@@ -487,53 +509,55 @@ const Navbar = () => {
 
                 <div className="border-t pt-4 space-y-4">
                   <div>
+                    <div className="text-sm font-semibold text-gray-800">Database backup</div>
+                    <div className="text-sm text-gray-700">Download a consistent copy of the current database for safe storage.</div>
+                    <div className="flex justify-end">
+                      <button
+                        className="btn btn-success"
+                        type="button"
+                        onClick={downloadDatabaseBackup}
+                        disabled={authLoading || backupLoading || restoreLoading}
+                      >
+                        {backupLoading ? 'Preparing...' : 'Download Backup'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4">
                     <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
                     <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
-                    {confirmRestore ? (
-                      <div className="space-y-2">
-                        <input
-                          className="input w-full"
-                          type="password"
-                          value={seedTokenInput}
-                          onChange={(e) => setSeedTokenInput(e.target.value)}
-                          placeholder="Seed token"
-                          autoFocus
-                        />
-                        <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2">
+                      {confirmRestore ? (
+                        <>
                           <span className="text-xs text-gray-600 self-center">Overwrite the current database?</span>
                           <button
                             className="btn btn-danger"
                             type="button"
                             onClick={restorePremierSnapshot}
-                            disabled={authLoading || restoreLoading || !seedTokenInput}
+                            disabled={authLoading || restoreLoading || backupLoading}
                           >
                             {restoreLoading ? 'Restoring...' : 'Confirm restore'}
                           </button>
                           <button
                             className="btn"
                             type="button"
-                            onClick={() => {
-                              setConfirmRestore(false);
-                              setSeedTokenInput('');
-                            }}
+                            onClick={() => setConfirmRestore(false)}
                             disabled={authLoading || restoreLoading}
                           >
                             Cancel
                           </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex justify-end">
+                        </>
+                      ) : (
                         <button
                           className="btn btn-primary"
                           type="button"
                           onClick={() => setConfirmRestore(true)}
-                          disabled={authLoading || restoreLoading}
+                          disabled={authLoading || restoreLoading || backupLoading}
                         >
                           Restore Premier Snapshot
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
 

@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
@@ -479,7 +480,32 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/restore-prem-snapshot', requireAdmin, requireSeedToken, async (req, res) => {
+app.get('/api/admin/database-backup', requireAdmin, async (req, res) => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `league-backup-${timestamp}.db`;
+  const backupPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-${filename}`);
+
+  try {
+    await logActivity({
+      eventType: 'admin',
+      action: 'download_database_backup',
+      entity: 'database',
+      req,
+    });
+    await db.backup(backupPath);
+    res.download(backupPath, filename, (error) => {
+      fs.rm(backupPath, { force: true }, () => {});
+      if (error && !res.headersSent) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+  } catch (error) {
+    fs.rm(backupPath, { force: true }, () => {});
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
   }

@@ -689,6 +689,24 @@ class Database {
     });
   }
 
+  backup(destination) {
+    return new Promise((resolve, reject) => {
+      const backup = this.db.backup(destination, (initializeError) => {
+        if (initializeError) {
+          reject(initializeError);
+          return;
+        }
+        backup.step(-1, (stepError) => {
+          if (stepError) {
+            reject(stepError);
+          } else {
+            resolve();
+          }
+        });
+      });
+    });
+  }
+
   close() {
     return new Promise((resolve, reject) => {
       this.db.close((err) => {
