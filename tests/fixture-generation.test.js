@@ -165,7 +165,7 @@ describe('fixture generation rules', () => {
     expect(storedSeason.status).toBe('draft');
   });
 
-  test('manual creation validates type, division membership, assignments, and date window', async () => {
+  test('manual creation validates relationships but permits date overrides', async () => {
     const { season, division } = await createSeason(
       app,
       'Manual Validation Season',
@@ -203,7 +203,7 @@ describe('fixture generation rules', () => {
       });
     expect(wrongTeam.status).toBe(400);
 
-    const outsideWindow = await request(app)
+    const overriddenDate = await request(app)
       .post('/api/fixtures')
       .set(adminHeaders())
       .send({
@@ -213,18 +213,20 @@ describe('fixture generation rules', () => {
         away_team_id: away.id,
         match_date: '2027-04-01T19:00:00.000Z',
       });
-    expect(outsideWindow.status).toBe(400);
+    expect(overriddenDate.status).toBe(201);
+    expect(overriddenDate.body.match_date).toBe('2027-04-01T19:00:00.000Z');
 
-    const valid = await request(app)
+    const reverseFixture = await request(app)
       .post('/api/fixtures')
       .set(adminHeaders())
       .send({
         team_season_id: season.id,
         division_id: division.id,
-        home_team_id: home.id,
-        away_team_id: away.id,
-        match_date: '2027-03-01T19:00:00.000Z',
+        home_team_id: away.id,
+        away_team_id: home.id,
+        match_date: '2027-03-07T12:00:00.000Z',
       });
-    expect(valid.status).toBe(201);
+    expect(reverseFixture.status).toBe(201);
+    expect(reverseFixture.body.match_date).toBe('2027-03-07T12:00:00.000Z');
   });
 });

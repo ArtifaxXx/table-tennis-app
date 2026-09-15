@@ -486,7 +486,7 @@ class FixtureManager {
         home_team_id: m.home_team_id,
         away_team_id: m.away_team_id,
         match_date: m.match_date || null,
-      });
+      }, { enforceScheduleRules: true });
 
       await this.db.run(
         `UPDATE division_cup_matches
@@ -557,7 +557,7 @@ class FixtureManager {
       home_team_id: updatedNext.home_team_id,
       away_team_id: updatedNext.away_team_id,
       match_date: scheduledDate ? scheduledDate.toISOString() : null,
-    });
+    }, { enforceScheduleRules: true });
 
     await this.db.run(
       `UPDATE division_cup_matches
@@ -739,7 +739,7 @@ class FixtureManager {
     }
   }
 
-  async createFixture(fixtureData) {
+  async createFixture(fixtureData, { enforceScheduleRules = false } = {}) {
     const { team_season_id, division_id, home_team_id, away_team_id, match_date } = fixtureData;
     const matchType = fixtureData.match_type || 'league';
 
@@ -777,20 +777,24 @@ class FixtureManager {
     if (match_date) {
       const date = new Date(match_date);
       if (Number.isNaN(date.getTime())) throw new Error('match_date is invalid');
-      if (homeTeam?.home_day == null) throw new Error('The home team must have a home day before scheduling this fixture');
-      if (weekdayIso1to7Utc(date) !== Number(homeTeam.home_day)) throw new Error('match_date must be on the home team day');
-      const scheduled = irishLocalDateTimeToUtc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 19);
-      const scheduleStart = season.schedule_start_date ? new Date(season.schedule_start_date) : null;
-      const scheduleEnd = season.schedule_end_date ? new Date(season.schedule_end_date) : null;
-      if (scheduleStart && scheduled.getTime() < scheduleStart.getTime()) throw new Error('match_date is before the season schedule window');
-      if (scheduleEnd && scheduled.getTime() > scheduleEnd.getTime()) throw new Error('match_date is after the season schedule window');
-      if (scheduleStart && scheduleEnd) {
-        const allowed = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
-        if (!allowed.some((candidate) => dateKeyUtc(candidate) === dateKeyUtc(scheduled))) {
-          throw new Error('match_date is not an available league date');
+      if (enforceScheduleRules) {
+        if (homeTeam?.home_day == null) throw new Error('The home team must have a home day before scheduling this fixture');
+        if (weekdayIso1to7Utc(date) !== Number(homeTeam.home_day)) throw new Error('match_date must be on the home team day');
+        const scheduled = irishLocalDateTimeToUtc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 19);
+        const scheduleStart = season.schedule_start_date ? new Date(season.schedule_start_date) : null;
+        const scheduleEnd = season.schedule_end_date ? new Date(season.schedule_end_date) : null;
+        if (scheduleStart && scheduled.getTime() < scheduleStart.getTime()) throw new Error('match_date is before the season schedule window');
+        if (scheduleEnd && scheduled.getTime() > scheduleEnd.getTime()) throw new Error('match_date is after the season schedule window');
+        if (scheduleStart && scheduleEnd) {
+          const allowed = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
+          if (!allowed.some((candidate) => dateKeyUtc(candidate) === dateKeyUtc(scheduled))) {
+            throw new Error('match_date is not an available league date');
+          }
         }
+        normalizedDate = scheduled.toISOString();
+      } else {
+        normalizedDate = date.toISOString();
       }
-      normalizedDate = scheduled.toISOString();
     }
 
     const duplicate = await this.db.get(
@@ -1038,55 +1042,19 @@ class FixtureManager {
   }
 
   async updateFixtureDate(id, match_date) {
-    const fixture = await this.db.get(
-      `SELECT f.*, t.home_day, ts.schedule_start_date, ts.schedule_end_date
-       FROM fixtures f
-       JOIN teams t ON t.id = f.home_team_id
-       JOIN team_seasons ts ON ts.id = f.team_season_id
-       WHERE f.id = ?`,
-      [id]
-    );
+    const fixture = await this.db.get('SELECT * FROM fixtures WHERE id = ?', [id]);
     if (!fixture) throw new Error('Fixture not found');
 
     await this.assertFixtureSeasonIsActive(id);
     const date = new Date(match_date);
     if (Number.isNaN(date.getTime())) throw new Error('match_date is invalid');
-    if (fixture.home_day == null) throw new Error('The home team must have a home day before scheduling this fixture');
-    if (weekdayIso1to7Utc(date) !== Number(fixture.home_day)) throw new Error('match_date must be on the home team day');
-    const scheduled = irishLocalDateTimeToUtc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 19);
-    const scheduleStart = new Date(fixture.schedule_start_date);
-    const scheduleEnd = new Date(fixture.schedule_end_date);
-    if (scheduled.getTime() < scheduleStart.getTime() || scheduled.getTime() > scheduleEnd.getTime()) {
-      throw new Error('match_date is outside the season schedule window');
-    }
-    const allowed = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
-    if (!allowed.some((candidate) => dateKeyUtc(candidate) === dateKeyUtc(scheduled))) {
-      throw new Error('match_date is not an available league date');
-    }
-
-    const conflicts = await this.db.all(
-      `SELECT match_date FROM fixtures
-       WHERE id <> ? AND team_season_id = ? AND match_date IS NOT NULL
-         AND (home_team_id IN (?, ?) OR away_team_id IN (?, ?))`,
-      [
-        id,
-        fixture.team_season_id,
-        fixture.home_team_id,
-        fixture.away_team_id,
-        fixture.home_team_id,
-        fixture.away_team_id,
-      ]
-    );
-    if (conflicts.some((other) => dateKeyUtc(new Date(other.match_date)) === dateKeyUtc(scheduled))) {
-      throw new Error('One of the teams already has a fixture on this date');
-    }
 
     await this.db.run(
       `UPDATE fixtures
        SET match_date = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [scheduled.toISOString(), id]
+      [date.toISOString(), id]
     );
 
     return this.getFixtureById(id);
@@ -1157,7 +1125,7 @@ class FixtureManager {
             home_team_id: homeId,
             away_team_id: awayId,
             match_date: best ? best.toISOString() : null,
-          })
+          }, { enforceScheduleRules: true })
         );
       }
     }

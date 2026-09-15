@@ -1,5 +1,4 @@
 const request = require('supertest');
-const FixtureManager = require('../src/models/fixture');
 const { createTestApp, adminHeaders } = require('./helpers');
 
 let app;
@@ -532,37 +531,15 @@ describe('read endpoints', () => {
 });
 
 describe('season state transitions', () => {
-  test('fixture updates work while active on the home team day', async () => {
+  test('fixture dates can be manually overridden while the season is active', async () => {
     const target = leagueFixtures[4];
-    const home = await db.get('SELECT home_day FROM teams WHERE id = ?', [target.home_team_id]);
-    const occupied = await db.all(
-      `SELECT id, match_date FROM fixtures
-       WHERE id <> ? AND team_season_id = ? AND match_date IS NOT NULL
-         AND (home_team_id IN (?, ?) OR away_team_id IN (?, ?))`,
-      [
-        target.id,
-        seasonId,
-        target.home_team_id,
-        target.away_team_id,
-        target.home_team_id,
-        target.away_team_id,
-      ]
-    );
-    const occupiedDates = new Set(occupied.map((fixture) => fixture.match_date.slice(0, 10)));
-    const allowed = FixtureManager.buildAllowedDatesUtc({
-      scheduleStart: new Date('2026-01-05T00:00:00.000Z'),
-      scheduleEnd: new Date('2026-06-30T23:59:59.999Z'),
-    });
-    const candidate = allowed.find((date) => {
-      const weekday = date.getUTCDay() || 7;
-      return weekday === home.home_day && !occupiedDates.has(date.toISOString().slice(0, 10));
-    });
+    const override = '2027-01-03T12:00:00.000Z';
     const res = await auth()
       .put(`/api/fixtures/${target.id}`)
       .set(adminHeaders())
-      .send({ match_date: candidate.toISOString() });
+      .send({ match_date: override });
     expect(res.status).toBe(200);
-    expect(res.body.match_date.slice(0, 10)).toBe(candidate.toISOString().slice(0, 10));
+    expect(res.body.match_date).toBe(override);
   });
 
   test('manual fixture creation rejects a duplicate pairing', async () => {

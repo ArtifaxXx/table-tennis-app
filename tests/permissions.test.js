@@ -59,6 +59,45 @@ describe('steward permissions', () => {
     expect(team.status).toBe(201);
   });
 
+  test('steward can override an automatically generated fixture date', async () => {
+    const season = await request(app)
+      .post('/api/team-seasons')
+      .set(adminHeaders())
+      .send({
+        name: 'Steward Override Season',
+        schedule_start_date: '2028-01-10',
+        schedule_end_date: '2028-06-30',
+      });
+    const divisions = await request(app).get(`/api/team-seasons/${season.body.id}/divisions`);
+    const home = await request(app)
+      .post('/api/teams')
+      .set(adminHeaders())
+      .send({ name: 'Override Home', home_day: 1 });
+    const away = await request(app)
+      .post('/api/teams')
+      .set(adminHeaders())
+      .send({ name: 'Override Away', home_day: 2 });
+    await request(app)
+      .put(`/api/divisions/${divisions.body[0].id}/teams`)
+      .set(adminHeaders())
+      .send({ teamIds: [home.body.id, away.body.id] });
+    const generated = await request(app)
+      .post('/api/fixtures/generate-schedule')
+      .set(adminHeaders())
+      .send({ team_season_id: season.body.id });
+    await request(app)
+      .post(`/api/team-seasons/${season.body.id}/start`)
+      .set(adminHeaders());
+
+    const override = '2029-01-07T12:00:00.000Z';
+    const updated = await request(app)
+      .put(`/api/fixtures/${generated.body[0].id}`)
+      .set(stewardHeaders())
+      .send({ match_date: override });
+    expect(updated.status).toBe(200);
+    expect(updated.body.match_date).toBe(override);
+  });
+
   test('steward cannot read activity logs but can download backups', async () => {
     const logs = await request(app)
       .get('/api/admin/activity-logs')
