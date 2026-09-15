@@ -707,6 +707,62 @@ class Database {
     });
   }
 
+  validateBackup(sourcePath, adminName) {
+    return new Promise((resolve, reject) => {
+      const source = new sqlite3.Database(sourcePath, sqlite3.OPEN_READONLY, (openError) => {
+        if (openError) {
+          reject(openError);
+          return;
+        }
+
+        const finish = (error, result) => {
+          source.close((closeError) => {
+            if (error || closeError) {
+              reject(error || closeError);
+            } else {
+              resolve(result);
+            }
+          });
+        };
+
+        source.get('PRAGMA integrity_check', [], (integrityError, integrity) => {
+          if (integrityError) {
+            finish(integrityError);
+            return;
+          }
+          if (!integrity || integrity.integrity_check !== 'ok') {
+            finish(new Error('Database integrity check failed'));
+            return;
+          }
+
+          source.get(
+            `SELECT COUNT(*) AS count
+             FROM sqlite_master
+             WHERE type = 'table'
+               AND name IN ('players', 'teams', 'team_seasons', 'fixtures', 'admin_users', 'activity_logs')`,
+            [],
+            (schemaError, schema) => {
+              if (schemaError) {
+                finish(schemaError);
+                return;
+              }
+              if (!schema || schema.count !== 6) {
+                finish(new Error('File is not a compatible league database backup'));
+                return;
+              }
+
+              source.get(
+                'SELECT name, password_hash FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+                [adminName],
+                (adminError, admin) => finish(adminError, { admin })
+              );
+            }
+          );
+        });
+      });
+    });
+  }
+
   close() {
     return new Promise((resolve, reject) => {
       this.db.close((err) => {

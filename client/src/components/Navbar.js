@@ -24,6 +24,8 @@ const Navbar = () => {
   const [resetTargetId, setResetTargetId] = useState(null);
   const [resetPasswordInput, setResetPasswordInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmBackupRestore, setConfirmBackupRestore] = useState(false);
+  const [restoreBackupFile, setRestoreBackupFile] = useState(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
 
   const getStoredAdminName = () => {
@@ -96,6 +98,7 @@ const Navbar = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRestoreLoading, setBackupRestoreLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   const refreshRole = async () => {
@@ -141,6 +144,26 @@ const Navbar = () => {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
       setBackupLoading(false);
+    }
+  };
+
+  const restoreDatabaseBackup = async () => {
+    if (backupRestoreLoading || !restoreBackupFile) return;
+
+    setBackupRestoreLoading(true);
+    try {
+      const data = await restoreBackupFile.arrayBuffer();
+      await axios.post('/api/admin/database-restore', data, {
+        headers: { 'Content-Type': 'application/octet-stream' },
+      });
+      toast.success('Database backup restored');
+      window.location.reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setBackupRestoreLoading(false);
+      setConfirmBackupRestore(false);
+      setRestoreBackupFile(null);
     }
   };
 
@@ -199,6 +222,8 @@ const Navbar = () => {
     setAuthOpen(false);
     setPasswordInput('');
     setNewPassword('');
+    setConfirmBackupRestore(false);
+    setRestoreBackupFile(null);
   };
 
   const enableAdmin = async () => {
@@ -508,19 +533,63 @@ const Navbar = () => {
                 </div>
 
                 <div className="border-t pt-4 space-y-4">
-                  <div>
+                  <div className="space-y-2">
                     <div className="text-sm font-semibold text-gray-800">Database backup</div>
-                    <div className="text-sm text-gray-700">Download a consistent copy of the current database for safe storage.</div>
+                    <div className="text-sm text-gray-700">Download a consistent copy or restore a previously downloaded backup.</div>
                     <div className="flex justify-end">
                       <button
                         className="btn btn-success"
                         type="button"
                         onClick={downloadDatabaseBackup}
-                        disabled={authLoading || backupLoading || restoreLoading}
+                        disabled={authLoading || backupLoading || backupRestoreLoading || restoreLoading}
                       >
                         {backupLoading ? 'Preparing...' : 'Download Backup'}
                       </button>
                     </div>
+                    <input
+                      key={restoreBackupFile ? restoreBackupFile.name : 'no-backup-selected'}
+                      className="input w-full"
+                      type="file"
+                      accept=".db,application/octet-stream"
+                      onChange={(e) => {
+                        setRestoreBackupFile(e.target.files?.[0] || null);
+                        setConfirmBackupRestore(false);
+                      }}
+                      disabled={backupLoading || backupRestoreLoading || restoreLoading}
+                    />
+                    {restoreBackupFile && (
+                      <div className="flex justify-end gap-2">
+                        {confirmBackupRestore ? (
+                          <>
+                            <span className="text-xs text-red-700 self-center">Replace all current data?</span>
+                            <button
+                              className="btn btn-danger"
+                              type="button"
+                              onClick={restoreDatabaseBackup}
+                              disabled={backupRestoreLoading}
+                            >
+                              {backupRestoreLoading ? 'Restoring...' : 'Confirm restore'}
+                            </button>
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => setConfirmBackupRestore(false)}
+                              disabled={backupRestoreLoading}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="btn btn-warning"
+                            type="button"
+                            onClick={() => setConfirmBackupRestore(true)}
+                          >
+                            Restore Selected Backup
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t pt-4">

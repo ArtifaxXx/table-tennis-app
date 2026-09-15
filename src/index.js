@@ -505,6 +505,87 @@ app.get('/api/admin/database-backup', requireAdmin, async (req, res) => {
   }
 });
 
+app.post(
+  '/api/admin/database-restore',
+  requireAdmin,
+  express.raw({ type: 'application/octet-stream', limit: '50mb' }),
+  async (req, res) => {
+    if (isSeeding) {
+      return res.status(409).json({ error: 'Database operation already in progress' });
+    }
+
+    const uploadPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-restore-upload.db`);
+    const rollbackPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-restore-rollback.db`);
+    const databasePath = db.dbPath || path.join(__dirname, '../data/league.db');
+    const walPath = `${databasePath}-wal`;
+    const shmPath = `${databasePath}-shm`;
+    let databaseClosed = false;
+    let rollbackReady = false;
+    isSeeding = true;
+
+    try {
+      if (!Buffer.isBuffer(req.body) || req.body.length < 16 || req.body.subarray(0, 16).toString() !== 'SQLite format 3\u0000') {
+        const error = new Error('Select a valid SQLite database backup');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      fs.writeFileSync(uploadPath, req.body);
+      const validation = await db.validateBackup(uploadPath, req.actorName);
+      const password = req.get('X-Admin-Password') || '';
+      if (!validation.admin || !verifyPassword(password, validation.admin.password_hash)) {
+        const error = new Error('Your current admin credentials must exist in the selected backup');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      await db.close();
+      databaseClosed = true;
+      fs.copyFileSync(databasePath, rollbackPath);
+      rollbackReady = true;
+      fs.copyFileSync(uploadPath, databasePath);
+      if (fs.existsSync(walPath)) fs.rmSync(walPath);
+      if (fs.existsSync(shmPath)) fs.rmSync(shmPath);
+      await db.initialize();
+      databaseClosed = false;
+      adminCredentialCache.clear();
+
+      await logActivity({
+        eventType: 'admin',
+        action: 'restore_database_backup',
+        entity: 'database',
+        details: { size: req.body.length },
+        req,
+      });
+      fs.rmSync(rollbackPath, { force: true });
+      rollbackReady = false;
+      res.json({ ok: true });
+    } catch (error) {
+      if (databaseClosed) {
+        try {
+          await db.close();
+        } catch (closeError) {
+          void closeError;
+        }
+        try {
+          if (rollbackReady) fs.copyFileSync(rollbackPath, databasePath);
+          if (fs.existsSync(walPath)) fs.rmSync(walPath);
+          if (fs.existsSync(shmPath)) fs.rmSync(shmPath);
+          await db.initialize();
+          databaseClosed = false;
+        } catch (recoveryError) {
+          console.error('Database restore recovery failed:', recoveryError);
+        }
+      }
+      res.status(error.statusCode || 500).json({ error: error.message });
+    } finally {
+      fs.rmSync(uploadPath, { force: true });
+      if (!databaseClosed) fs.rmSync(rollbackPath, { force: true });
+      isSeeding = false;
+    }
+  }
+);
+
 app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
