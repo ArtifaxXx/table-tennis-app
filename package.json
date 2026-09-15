@@ -1,6 +1,6 @@
 {
   "name": "table-tennis-league",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "A comprehensive table tennis league management system",
   "main": "src/index.js",
   "scripts": {
@@ -29,6 +29,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
