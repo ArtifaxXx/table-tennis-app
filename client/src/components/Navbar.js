@@ -25,6 +25,7 @@ const Navbar = () => {
   const [resetPasswordInput, setResetPasswordInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [seedTokenInput, setSeedTokenInput] = useState('');
 
   const getStoredAdminName = () => {
     try {
@@ -119,11 +120,13 @@ const Navbar = () => {
   };
 
   const restorePremierSnapshot = async () => {
-    if (restoreLoading) return;
+    if (restoreLoading || !seedTokenInput) return;
 
     setRestoreLoading(true);
     try {
-      await axios.post('/api/admin/restore-prem-snapshot', {});
+      await axios.post('/api/admin/restore-prem-snapshot', {}, {
+        headers: { 'X-Seed-Token': seedTokenInput },
+      });
       toast.success('Premier Division snapshot restored');
       window.location.reload();
     } catch (e) {
@@ -131,6 +134,7 @@ const Navbar = () => {
     } finally {
       setRestoreLoading(false);
       setConfirmRestore(false);
+      setSeedTokenInput('');
     }
   };
 
@@ -485,28 +489,41 @@ const Navbar = () => {
                   <div>
                     <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
                     <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
-                    <div className="flex justify-end gap-2">
-                      {confirmRestore ? (
-                        <>
+                    {confirmRestore ? (
+                      <div className="space-y-2">
+                        <input
+                          className="input w-full"
+                          type="password"
+                          value={seedTokenInput}
+                          onChange={(e) => setSeedTokenInput(e.target.value)}
+                          placeholder="Seed token"
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
                           <span className="text-xs text-gray-600 self-center">Overwrite the current database?</span>
                           <button
                             className="btn btn-danger"
                             type="button"
                             onClick={restorePremierSnapshot}
-                            disabled={authLoading || restoreLoading}
+                            disabled={authLoading || restoreLoading || !seedTokenInput}
                           >
                             {restoreLoading ? 'Restoring...' : 'Confirm restore'}
                           </button>
                           <button
                             className="btn"
                             type="button"
-                            onClick={() => setConfirmRestore(false)}
+                            onClick={() => {
+                              setConfirmRestore(false);
+                              setSeedTokenInput('');
+                            }}
                             disabled={authLoading || restoreLoading}
                           >
                             Cancel
                           </button>
-                        </>
-                      ) : (
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-end">
                         <button
                           className="btn btn-primary"
                           type="button"
@@ -515,8 +532,8 @@ const Navbar = () => {
                         >
                           Restore Premier Snapshot
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
