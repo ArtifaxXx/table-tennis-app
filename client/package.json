@@ -1,6 +1,6 @@
 {
   "name": "table-tennis-league-client",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
