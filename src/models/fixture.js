@@ -102,15 +102,35 @@ function getIrishPublicHolidayKeysUtc(year) {
 }
 
 function isChristmasBlackoutUtc(date) {
-  const y = date.getUTCFullYear();
-  const key = dateKeyUtc(date);
-  const start = dateKeyUtc(new Date(Date.UTC(y, 11, 25, 0, 0, 0, 0)));
-  const end = dateKeyUtc(new Date(Date.UTC(y + 1, 0, 10, 0, 0, 0, 0)));
-  // Compare using actual dates for correctness across years
-  const d = startOfDayUtc(date).getTime();
-  const s = startOfDayUtc(new Date(Date.UTC(y, 11, 25))).getTime();
-  const e = startOfDayUtc(new Date(Date.UTC(y + 1, 0, 10))).getTime();
-  return d >= s && d <= e && (key >= start || key <= end);
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  return (month === 11 && day >= 25) || (month === 0 && day <= 6);
+}
+
+function irishLocalDateTimeToUtc(year, month, day, hour) {
+  const guess = Date.UTC(year, month, day, hour, 0, 0, 0);
+  const formatter = new Intl.DateTimeFormat('en-IE', {
+    timeZone: 'Europe/Dublin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(guess)).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value])
+  );
+  const representedAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return new Date(guess - (representedAsUtc - guess));
 }
 
 function buildAllowedDatesUtc({ scheduleStart, scheduleEnd }) {
@@ -137,10 +157,47 @@ function buildAllowedDatesUtc({ scheduleStart, scheduleEnd }) {
     if (holidayKeys.has(dateKeyUtc(d))) continue;
     if (isChristmasBlackoutUtc(d)) continue;
 
-    const match = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 19, 0, 0, 0));
+    const match = irishLocalDateTimeToUtc(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 19);
     out.push(match);
   }
   return out;
+}
+
+function buildUsedTeamsByDateKey(fixtures) {
+  const used = new Map();
+  for (const fixture of fixtures) {
+    if (!fixture.match_date) continue;
+    const key = dateKeyUtc(new Date(fixture.match_date));
+    if (!used.has(key)) used.set(key, new Set());
+    used.get(key).add(fixture.home_team_id);
+    used.get(key).add(fixture.away_team_id);
+  }
+  return used;
+}
+
+function pickHomeDayDate({ allowedDates, baseIdx, homeDay, homeId, awayId, usedTeamsByDateKey }) {
+  if (!homeDay || !homeId || !awayId || allowedDates.length === 0) return null;
+  for (let radius = 0; radius < allowedDates.length; radius++) {
+    const candidates = [];
+    if (baseIdx - radius >= 0) candidates.push(baseIdx - radius);
+    if (radius > 0 && baseIdx + radius < allowedDates.length) candidates.push(baseIdx + radius);
+    for (const idx of candidates) {
+      const date = allowedDates[idx];
+      if (weekdayIso1to7Utc(date) !== homeDay) continue;
+      const used = usedTeamsByDateKey.get(dateKeyUtc(date));
+      if (used?.has(homeId) || used?.has(awayId)) continue;
+      return date;
+    }
+  }
+  return null;
+}
+
+function reserveFixtureDate(usedTeamsByDateKey, date, homeId, awayId) {
+  if (!date) return;
+  const key = dateKeyUtc(date);
+  if (!usedTeamsByDateKey.has(key)) usedTeamsByDateKey.set(key, new Set());
+  usedTeamsByDateKey.get(key).add(homeId);
+  usedTeamsByDateKey.get(key).add(awayId);
 }
 
 function buildRoundRobinRounds(teamIds) {
@@ -328,121 +385,86 @@ class FixtureManager {
     teamSeasonId,
     divisionId,
     cupId,
-    divisionTeamIds,
     scheduleStart,
     scheduleEnd,
   }) {
     const allowedDates = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
-    if (allowedDates.length === 0) {
-      throw new Error('No available dates in scheduling window after exclusions');
-    }
-
-    const divisionTeamIdSet = new Set(divisionTeamIds);
-
     const existingFixtures = await this.db.all(
       `SELECT match_date, home_team_id, away_team_id
        FROM fixtures
        WHERE team_season_id = ? AND division_id = ? AND match_date IS NOT NULL`,
       [teamSeasonId, divisionId]
     );
-
-    const usedTeamsByDateKey = new Map();
-    for (const f of existingFixtures) {
-      const dk = dateKeyUtc(new Date(f.match_date));
-      if (!usedTeamsByDateKey.has(dk)) usedTeamsByDateKey.set(dk, new Set());
-      usedTeamsByDateKey.get(dk).add(f.home_team_id);
-      usedTeamsByDateKey.get(dk).add(f.away_team_id);
-    }
-
+    const usedTeamsByDateKey = buildUsedTeamsByDateKey(existingFixtures);
     const matches = await this.db.all(
       `SELECT * FROM division_cup_matches
        WHERE cup_id = ?
        ORDER BY round_number ASC, match_number ASC`,
       [cupId]
     );
-
-    const maxRound = matches.reduce((m, r) => Math.max(m, r.round_number), 1);
+    const maxRound = matches.reduce((max, match) => Math.max(max, match.round_number), 1);
     const targetIdxByRound = frontLoadedTargetIndices(maxRound, allowedDates.length);
 
-    const pickDate = async ({ requirePreferredDay, preferredDayIso, teamA, teamB, nearEnd }) => {
-      const maxRadius = Math.max(allowedDates.length, 60);
-      const baseIdx = nearEnd ? allowedDates.length - 1 : (targetIdxByRound[0] || 0);
-
-      for (let radius = 0; radius <= maxRadius; radius++) {
-        const candidates = [];
-        if (baseIdx - radius >= 0) candidates.push(baseIdx - radius);
-        if (radius > 0 && baseIdx + radius < allowedDates.length) candidates.push(baseIdx + radius);
-
-        for (const idx of candidates) {
-          const dt = allowedDates[idx];
-          const dk = dateKeyUtc(dt);
-          const used = usedTeamsByDateKey.get(dk) || new Set();
-          const iso = weekdayIso1to7Utc(dt);
-
-          if (requirePreferredDay && preferredDayIso && iso !== preferredDayIso) continue;
-
-          if (teamA && used.has(teamA)) continue;
-          if (teamB && used.has(teamB)) continue;
-
-          // If a team is unknown, require date to be free for all division teams.
-          if (!teamA || !teamB) {
-            let any = false;
-            for (const tid of used) {
-              if (divisionTeamIdSet.has(tid)) {
-                any = true;
-                break;
-              }
-            }
-            if (any) continue;
-          }
-
-          return dt;
-        }
-      }
-
-      return null;
-    };
-
-    // Schedule per round.
     for (let round = 1; round <= maxRound; round++) {
-      const roundMatches = matches.filter((m) => m.round_number === round);
-      const nearEnd = round === maxRound;
-
-      // Pick a base index for this round.
-      const baseIdx = nearEnd ? allowedDates.length - 1 : (targetIdxByRound[round - 1] || 0);
-      const baseDt = allowedDates[baseIdx] || allowedDates[0];
-
-      for (const m of roundMatches) {
-        // Determine preferred day from home team (if known) for early rounds.
-        let preferredDayIso = null;
-        if (!nearEnd && m.home_team_id) {
-          const home = await this.db.get('SELECT home_day FROM teams WHERE id = ?', [m.home_team_id]);
-          preferredDayIso = home?.home_day == null ? null : Number(home.home_day);
-        }
-
-        const dt = await pickDate({
-          requirePreferredDay: !nearEnd && !!preferredDayIso,
-          preferredDayIso,
-          teamA: m.home_team_id || null,
-          teamB: m.away_team_id || null,
-          nearEnd,
-          baseDt,
+      const baseIdx = round === maxRound ? Math.max(0, allowedDates.length - 1) : (targetIdxByRound[round - 1] || 0);
+      for (const match of matches.filter((item) => item.round_number === round)) {
+        const home = match.home_team_id
+          ? await this.db.get('SELECT home_day FROM teams WHERE id = ?', [match.home_team_id])
+          : null;
+        const best = pickHomeDayDate({
+          allowedDates,
+          baseIdx,
+          homeDay: home?.home_day == null ? null : Number(home.home_day),
+          homeId: match.home_team_id,
+          awayId: match.away_team_id,
+          usedTeamsByDateKey,
         });
-
-        const best = dt || baseDt;
-        const dk = dateKeyUtc(best);
-        if (!usedTeamsByDateKey.has(dk)) usedTeamsByDateKey.set(dk, new Set());
-        if (m.home_team_id) usedTeamsByDateKey.get(dk).add(m.home_team_id);
-        if (m.away_team_id) usedTeamsByDateKey.get(dk).add(m.away_team_id);
-
+        reserveFixtureDate(usedTeamsByDateKey, best, match.home_team_id, match.away_team_id);
         await this.db.run(
           `UPDATE division_cup_matches
            SET match_date = ?, updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
-          [best.toISOString(), m.id]
+          [best ? best.toISOString() : null, match.id]
         );
       }
     }
+  }
+
+  async findCupFixtureDate(teamSeasonId, divisionId, cupId, cupMatch) {
+    if (!cupMatch.home_team_id || !cupMatch.away_team_id) return null;
+    const season = await this.db.get(
+      'SELECT schedule_start_date, schedule_end_date FROM team_seasons WHERE id = ?',
+      [teamSeasonId]
+    );
+    if (!season?.schedule_start_date || !season?.schedule_end_date) return null;
+
+    const allowedDates = buildAllowedDatesUtc({
+      scheduleStart: new Date(season.schedule_start_date),
+      scheduleEnd: new Date(season.schedule_end_date),
+    });
+    const existingFixtures = await this.db.all(
+      `SELECT match_date, home_team_id, away_team_id FROM fixtures
+       WHERE team_season_id = ? AND division_id = ? AND match_date IS NOT NULL`,
+      [teamSeasonId, divisionId]
+    );
+    const usedTeamsByDateKey = buildUsedTeamsByDateKey(existingFixtures);
+    const home = await this.db.get('SELECT home_day FROM teams WHERE id = ?', [cupMatch.home_team_id]);
+    const round = await this.db.get(
+      'SELECT MAX(round_number) AS max_round FROM division_cup_matches WHERE cup_id = ?',
+      [cupId]
+    );
+    const targets = frontLoadedTargetIndices(round?.max_round || 1, allowedDates.length);
+    const baseIdx = cupMatch.round_number === round?.max_round
+      ? Math.max(0, allowedDates.length - 1)
+      : (targets[cupMatch.round_number - 1] || 0);
+    return pickHomeDayDate({
+      allowedDates,
+      baseIdx,
+      homeDay: home?.home_day == null ? null : Number(home.home_day),
+      homeId: cupMatch.home_team_id,
+      awayId: cupMatch.away_team_id,
+      usedTeamsByDateKey,
+    });
   }
 
   async createCupFixturesForKnownMatches(teamSeasonId, divisionId, cupId) {
@@ -525,20 +547,23 @@ class FixtureManager {
     const cup = await this.db.get('SELECT * FROM division_cups WHERE id = ?', [updatedNext.cup_id]);
     if (!cup) return;
 
+    const scheduledDate = updatedNext.match_date
+      ? new Date(updatedNext.match_date)
+      : await this.findCupFixtureDate(cup.team_season_id, cup.division_id, cup.id, updatedNext);
     const fixtureNext = await this.createFixture({
       team_season_id: cup.team_season_id,
       division_id: cup.division_id,
       match_type: 'cup',
       home_team_id: updatedNext.home_team_id,
       away_team_id: updatedNext.away_team_id,
-      match_date: updatedNext.match_date || null,
+      match_date: scheduledDate ? scheduledDate.toISOString() : null,
     });
 
     await this.db.run(
       `UPDATE division_cup_matches
-       SET fixture_id = ?, updated_at = CURRENT_TIMESTAMP
+       SET fixture_id = ?, match_date = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [fixtureNext.id, updatedNext.id]
+      [fixtureNext.id, scheduledDate ? scheduledDate.toISOString() : null, updatedNext.id]
     );
   }
 
@@ -660,7 +685,6 @@ class FixtureManager {
       teamSeasonId: team_season_id,
       divisionId: division_id,
       cupId,
-      divisionTeamIds: ids,
       scheduleStart,
       scheduleEnd,
     });
@@ -716,32 +740,72 @@ class FixtureManager {
   }
 
   async createFixture(fixtureData) {
-    const { team_season_id, division_id, home_team_id, away_team_id, match_date, match_type } = fixtureData;
+    const { team_season_id, division_id, home_team_id, away_team_id, match_date } = fixtureData;
+    const matchType = fixtureData.match_type || 'league';
 
-    if (!team_season_id) {
-      throw new Error('team_season_id is required');
-    }
+    if (!team_season_id) throw new Error('team_season_id is required');
+    if (!division_id) throw new Error('division_id is required');
+    if (!['league', 'cup'].includes(matchType)) throw new Error('match_type must be league or cup');
+    if (!home_team_id || !away_team_id) throw new Error('Both home_team_id and away_team_id are required');
+    if (home_team_id === away_team_id) throw new Error('Home and away teams must be different');
 
-    if (!home_team_id || !away_team_id) {
-      throw new Error('Both home_team_id and away_team_id are required');
-    }
-    if (home_team_id === away_team_id) {
-      throw new Error('Home and away teams must be different');
-    }
+    const season = await this.db.get('SELECT * FROM team_seasons WHERE id = ?', [team_season_id]);
+    if (!season) throw new Error('Season not found');
+    if (season.status === 'concluded') throw new Error('Fixtures cannot be created for a concluded season');
+
+    const division = await this.db.get(
+      'SELECT id FROM team_season_divisions WHERE id = ? AND team_season_id = ? AND active = 1',
+      [division_id, team_season_id]
+    );
+    if (!division) throw new Error('Division does not belong to the selected season');
 
     const teams = await this.db.all(
-      'SELECT id FROM teams WHERE id IN (?, ?) AND active = 1',
+      'SELECT id, home_day FROM teams WHERE id IN (?, ?) AND active = 1',
       [home_team_id, away_team_id]
     );
-    if (teams.length !== 2) {
-      throw new Error('One or both teams not found or inactive');
+    if (teams.length !== 2) throw new Error('One or both teams not found or inactive');
+    const homeTeam = teams.find((team) => team.id === home_team_id);
+
+    const assignments = await this.db.all(
+      `SELECT team_id FROM team_season_division_teams
+       WHERE team_season_id = ? AND division_id = ? AND team_id IN (?, ?)`,
+      [team_season_id, division_id, home_team_id, away_team_id]
+    );
+    if (assignments.length !== 2) throw new Error('Both teams must be assigned to the selected division');
+
+    let normalizedDate = null;
+    if (match_date) {
+      const date = new Date(match_date);
+      if (Number.isNaN(date.getTime())) throw new Error('match_date is invalid');
+      if (homeTeam?.home_day == null) throw new Error('The home team must have a home day before scheduling this fixture');
+      if (weekdayIso1to7Utc(date) !== Number(homeTeam.home_day)) throw new Error('match_date must be on the home team day');
+      const scheduled = irishLocalDateTimeToUtc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 19);
+      const scheduleStart = season.schedule_start_date ? new Date(season.schedule_start_date) : null;
+      const scheduleEnd = season.schedule_end_date ? new Date(season.schedule_end_date) : null;
+      if (scheduleStart && scheduled.getTime() < scheduleStart.getTime()) throw new Error('match_date is before the season schedule window');
+      if (scheduleEnd && scheduled.getTime() > scheduleEnd.getTime()) throw new Error('match_date is after the season schedule window');
+      if (scheduleStart && scheduleEnd) {
+        const allowed = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
+        if (!allowed.some((candidate) => dateKeyUtc(candidate) === dateKeyUtc(scheduled))) {
+          throw new Error('match_date is not an available league date');
+        }
+      }
+      normalizedDate = scheduled.toISOString();
     }
+
+    const duplicate = await this.db.get(
+      `SELECT id FROM fixtures
+       WHERE team_season_id = ? AND division_id = ? AND match_type = ?
+         AND home_team_id = ? AND away_team_id = ?`,
+      [team_season_id, division_id, matchType, home_team_id, away_team_id]
+    );
+    if (duplicate) throw new Error('This fixture already exists');
 
     const id = uuidv4();
     await this.db.run(
       `INSERT INTO fixtures (id, team_season_id, division_id, match_type, home_team_id, away_team_id, match_date)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, team_season_id, division_id || null, match_type || 'league', home_team_id, away_team_id, match_date]
+      [id, team_season_id, division_id, matchType, home_team_id, away_team_id, normalizedDate]
     );
 
     return this.getFixtureById(id);
@@ -974,17 +1038,55 @@ class FixtureManager {
   }
 
   async updateFixtureDate(id, match_date) {
-    const fixture = await this.db.get('SELECT * FROM fixtures WHERE id = ?', [id]);
+    const fixture = await this.db.get(
+      `SELECT f.*, t.home_day, ts.schedule_start_date, ts.schedule_end_date
+       FROM fixtures f
+       JOIN teams t ON t.id = f.home_team_id
+       JOIN team_seasons ts ON ts.id = f.team_season_id
+       WHERE f.id = ?`,
+      [id]
+    );
     if (!fixture) throw new Error('Fixture not found');
 
     await this.assertFixtureSeasonIsActive(id);
+    const date = new Date(match_date);
+    if (Number.isNaN(date.getTime())) throw new Error('match_date is invalid');
+    if (fixture.home_day == null) throw new Error('The home team must have a home day before scheduling this fixture');
+    if (weekdayIso1to7Utc(date) !== Number(fixture.home_day)) throw new Error('match_date must be on the home team day');
+    const scheduled = irishLocalDateTimeToUtc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 19);
+    const scheduleStart = new Date(fixture.schedule_start_date);
+    const scheduleEnd = new Date(fixture.schedule_end_date);
+    if (scheduled.getTime() < scheduleStart.getTime() || scheduled.getTime() > scheduleEnd.getTime()) {
+      throw new Error('match_date is outside the season schedule window');
+    }
+    const allowed = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
+    if (!allowed.some((candidate) => dateKeyUtc(candidate) === dateKeyUtc(scheduled))) {
+      throw new Error('match_date is not an available league date');
+    }
+
+    const conflicts = await this.db.all(
+      `SELECT match_date FROM fixtures
+       WHERE id <> ? AND team_season_id = ? AND match_date IS NOT NULL
+         AND (home_team_id IN (?, ?) OR away_team_id IN (?, ?))`,
+      [
+        id,
+        fixture.team_season_id,
+        fixture.home_team_id,
+        fixture.away_team_id,
+        fixture.home_team_id,
+        fixture.away_team_id,
+      ]
+    );
+    if (conflicts.some((other) => dateKeyUtc(new Date(other.match_date)) === dateKeyUtc(scheduled))) {
+      throw new Error('One of the teams already has a fixture on this date');
+    }
 
     await this.db.run(
       `UPDATE fixtures
        SET match_date = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [match_date, id]
+      [scheduled.toISOString(), id]
     );
 
     return this.getFixtureById(id);
@@ -997,10 +1099,8 @@ class FixtureManager {
       throw new Error('team_season_id is required');
     }
 
-    const ids = Array.isArray(teamIds) ? teamIds.filter(Boolean) : [];
-    if (!ids || ids.length < 2) {
-      throw new Error('At least 2 teams are required to generate a schedule for a division');
-    }
+    const ids = Array.from(new Set(Array.isArray(teamIds) ? teamIds.filter(Boolean) : []));
+    if (ids.length < 2) throw new Error('At least 2 teams are required to generate a schedule for a division');
 
     const teams = await this.db.all(
       `SELECT *
@@ -1009,9 +1109,7 @@ class FixtureManager {
        ORDER BY name`,
       ids
     );
-    if (teams.length < 2) {
-      throw new Error('At least 2 active teams are required');
-    }
+    if (teams.length !== ids.length) throw new Error('All assigned teams must be active');
 
     const scheduleStart = schedule_start_date ? new Date(schedule_start_date) : null;
     const scheduleEnd = schedule_end_date ? new Date(schedule_end_date) : null;
@@ -1023,103 +1121,34 @@ class FixtureManager {
     }
 
     const allowedDates = buildAllowedDatesUtc({ scheduleStart, scheduleEnd });
-    if (allowedDates.length === 0) {
-      throw new Error('No available dates in scheduling window after exclusions');
-    }
-
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const rounds = buildRoundRobinRounds(teams.map((t) => t.id));
     const secondLegRounds = rounds.map((pairs) => pairs.map(([a, b]) => [b, a]));
     const allRounds = [...rounds, ...secondLegRounds];
-
     const targetIdxByRound = frontLoadedTargetIndices(allRounds.length, allowedDates.length);
-    const usedTeamsByDateKey = new Map();
-    const lastMatchTimeByTeam = new Map();
-
+    const existingFixtures = await this.db.all(
+      `SELECT match_date, home_team_id, away_team_id FROM fixtures
+       WHERE team_season_id = ? AND division_id = ? AND match_date IS NOT NULL`,
+      [team_season_id, division_id]
+    );
+    const usedTeamsByDateKey = buildUsedTeamsByDateKey(existingFixtures);
     const created = [];
 
     for (let r = 0; r < allRounds.length; r++) {
-      const pairs = allRounds[r];
-      // Schedule each match in this round near the target index.
-      for (const [homeId, awayId] of pairs) {
+      for (const [homeId, awayId] of allRounds[r]) {
         const home = teamById.get(homeId);
         const away = teamById.get(awayId);
         if (!home || !away) continue;
 
-        const preferredHomeDay = home.home_day == null ? null : Number(home.home_day);
-        const baseIdx = targetIdxByRound[r] || 0;
-
-        let best = null;
-        let bestScore = Infinity;
-
-        const maxRadius = Math.max(allowedDates.length, 60);
-        const tryPick = (requirePreferredDay) => {
-          best = null;
-          bestScore = Infinity;
-
-          for (let radius = 0; radius <= maxRadius; radius++) {
-            const candidates = [];
-            if (baseIdx - radius >= 0) candidates.push(baseIdx - radius);
-            if (radius > 0 && baseIdx + radius < allowedDates.length) candidates.push(baseIdx + radius);
-
-            for (const idx of candidates) {
-              const dt = allowedDates[idx];
-              const dk = dateKeyUtc(dt);
-              const usedTeams = usedTeamsByDateKey.get(dk) || new Set();
-              if (usedTeams.has(homeId) || usedTeams.has(awayId)) continue;
-
-              const iso = weekdayIso1to7Utc(dt);
-              if (requirePreferredDay && preferredHomeDay && iso !== preferredHomeDay) continue;
-
-              const lastHome = lastMatchTimeByTeam.get(homeId);
-              const lastAway = lastMatchTimeByTeam.get(awayId);
-              const dayMs = 24 * 60 * 60 * 1000;
-              const gapHomeDays = lastHome ? Math.abs((dt.getTime() - lastHome) / dayMs) : null;
-              const gapAwayDays = lastAway ? Math.abs((dt.getTime() - lastAway) / dayMs) : null;
-
-              // Prefer ~7 days between matches if possible.
-              const gapPenalty =
-                (gapHomeDays == null ? 0 : Math.abs(gapHomeDays - 7)) +
-                (gapAwayDays == null ? 0 : Math.abs(gapAwayDays - 7));
-
-              // Slightly prefer earlier dates for front-loading.
-              const earlyPenalty = idx * 0.02;
-
-              // If we are not requiring the preferred day, still heavily prefer it.
-              const homeDayPenalty = preferredHomeDay && iso !== preferredHomeDay ? 1000 : 0;
-
-              const score = homeDayPenalty + gapPenalty + earlyPenalty;
-              if (score < bestScore) {
-                bestScore = score;
-                best = dt;
-              }
-            }
-
-            if (best) break;
-          }
-
-          return best;
-        };
-
-        // Phase 1: if home team has a preferred home day, try to place ONLY on that weekday.
-        if (preferredHomeDay) {
-          tryPick(true);
-        }
-        // Phase 2: fallback to any allowed weekday (but still heavily prefers home day).
-        if (!best) {
-          tryPick(false);
-        }
-
-        if (!best) {
-          throw new Error('Unable to schedule all fixtures within the window');
-        }
-
-        const dk = dateKeyUtc(best);
-        if (!usedTeamsByDateKey.has(dk)) usedTeamsByDateKey.set(dk, new Set());
-        usedTeamsByDateKey.get(dk).add(homeId);
-        usedTeamsByDateKey.get(dk).add(awayId);
-        lastMatchTimeByTeam.set(homeId, best.getTime());
-        lastMatchTimeByTeam.set(awayId, best.getTime());
+        const best = pickHomeDayDate({
+          allowedDates,
+          baseIdx: targetIdxByRound[r] || 0,
+          homeDay: home.home_day == null ? null : Number(home.home_day),
+          homeId,
+          awayId,
+          usedTeamsByDateKey,
+        });
+        reserveFixtureDate(usedTeamsByDateKey, best, homeId, awayId);
 
         created.push(
           await this.createFixture({
@@ -1127,7 +1156,7 @@ class FixtureManager {
             division_id,
             home_team_id: homeId,
             away_team_id: awayId,
-            match_date: best.toISOString(),
+            match_date: best ? best.toISOString() : null,
           })
         );
       }
@@ -1548,3 +1577,5 @@ class FixtureManager {
 }
 
 module.exports = FixtureManager;
+module.exports.buildAllowedDatesUtc = buildAllowedDatesUtc;
+module.exports.buildRoundRobinRounds = buildRoundRobinRounds;

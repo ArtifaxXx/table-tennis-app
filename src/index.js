@@ -1111,7 +1111,22 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
 
     for (const d of (divisions || [])) {
       const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
-      const teamCount = Array.isArray(teamIds) ? teamIds.length : 0;
+      const assignedIds = Array.isArray(teamIds) ? teamIds : [];
+      const activeTeams = assignedIds.length > 0
+        ? await db.all(
+            `SELECT id, name, home_day FROM teams
+             WHERE active = 1 AND id IN (${assignedIds.map(() => '?').join(',')})`,
+            assignedIds
+          )
+        : [];
+      const teamCount = activeTeams.length;
+      if (teamCount !== assignedIds.length) {
+        warnings.push(`Division "${d.name}" contains inactive or missing teams.`);
+      }
+      const missingHomeDays = activeTeams.filter((team) => team.home_day == null).map((team) => team.name);
+      if (missingHomeDays.length > 0) {
+        warnings.push(`Division "${d.name}" has teams without home days; their home fixtures will be left unscheduled: ${missingHomeDays.join(', ')}.`);
+      }
 
       // Double round robin: each pair plays twice => n*(n-1)
       const fixtureCount = teamCount >= 2 ? (teamCount * (teamCount - 1)) : 0;
@@ -1151,6 +1166,7 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
 });
 
 app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
+  let transactionStarted = false;
   try {
     const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
     if (!team_season_id) {
@@ -1160,6 +1176,9 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
     const season = await teamSeasonManager.getSeasonById(team_season_id);
     if (!season) {
       throw new Error('Season not found');
+    }
+    if (season.status !== 'draft') {
+      throw new Error('Fixtures can only be generated for a draft season');
     }
 
     const scheduleStartDate = (req.body && req.body.schedule_start_date) ? req.body.schedule_start_date : season.schedule_start_date;
@@ -1173,6 +1192,18 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
       throw new Error('No divisions configured for this season');
     }
 
+    const existing = await db.get(
+      `SELECT
+         (SELECT COUNT(*) FROM fixtures WHERE team_season_id = ?) AS fixture_count,
+         (SELECT COUNT(*) FROM division_cups WHERE team_season_id = ?) AS cup_count`,
+      [team_season_id, team_season_id]
+    );
+    if ((existing?.fixture_count || 0) > 0 || (existing?.cup_count || 0) > 0) {
+      throw new Error('Fixtures have already been generated for this season');
+    }
+
+    await db.run('BEGIN IMMEDIATE TRANSACTION');
+    transactionStarted = true;
     const allFixtures = [];
     for (const d of divisions) {
       const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
@@ -1205,8 +1236,41 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
     }
 
     await teamSeasonManager.setSeasonReady(team_season_id);
+    const counts = await db.get(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN match_type = 'league' THEN 1 ELSE 0 END) AS league,
+         SUM(CASE WHEN match_type = 'cup' THEN 1 ELSE 0 END) AS cup,
+         SUM(CASE WHEN match_date IS NULL THEN 1 ELSE 0 END) AS unscheduled
+       FROM fixtures WHERE team_season_id = ?`,
+      [team_season_id]
+    );
+    await logActivity({
+      eventType: 'edit',
+      action: 'fixture_creation',
+      entity: 'fixtures',
+      entityId: team_season_id,
+      details: {
+        season: season.name,
+        divisions: divisions.length,
+        leagueFixtures: counts?.league || 0,
+        cupFixtures: counts?.cup || 0,
+        totalFixtures: counts?.total || 0,
+        unscheduledFixtures: counts?.unscheduled || 0,
+      },
+      req,
+    });
+    await db.run('COMMIT');
+    transactionStarted = false;
     res.json(allFixtures);
   } catch (error) {
+    if (transactionStarted) {
+      try {
+        await db.run('ROLLBACK');
+      } catch (rollbackError) {
+        void rollbackError;
+      }
+    }
     res.status(400).json({ error: error.message });
   }
 });

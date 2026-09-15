@@ -283,6 +283,12 @@ class TeamSeasonManager {
         [id]
       );
 
+      await this.db.run(
+        `DELETE FROM division_cup_matches
+         WHERE cup_id IN (SELECT id FROM division_cups WHERE team_season_id = ?)`,
+        [id]
+      );
+      await this.db.run('DELETE FROM division_cups WHERE team_season_id = ?', [id]);
       await this.db.run('DELETE FROM fixtures WHERE team_season_id = ?', [id]);
       await this.db.run('DELETE FROM team_season_division_teams WHERE team_season_id = ?', [id]);
       await this.db.run('DELETE FROM team_season_divisions WHERE team_season_id = ?', [id]);

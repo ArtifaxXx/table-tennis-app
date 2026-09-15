@@ -112,6 +112,22 @@ class Database {
     }
   }
 
+  async ensureFixtureUniquenessIndex() {
+    const duplicate = await this.get(
+      `SELECT 1 FROM fixtures
+       WHERE team_season_id IS NOT NULL AND division_id IS NOT NULL
+       GROUP BY team_season_id, division_id, match_type, home_team_id, away_team_id
+       HAVING COUNT(*) > 1
+       LIMIT 1`
+    );
+    if (!duplicate) {
+      await this.run(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_fixtures_unique_pairing
+         ON fixtures (team_season_id, division_id, match_type, home_team_id, away_team_id)`
+      );
+    }
+  }
+
   async ensureFixturesForfeitColumns() {
     const columns = await this.all('PRAGMA table_info(fixtures)');
     const columnNames = new Set(columns.map((c) => c.name));
@@ -159,8 +175,8 @@ class Database {
 
     if (!columnNames.has('match_type')) {
       await this.run("ALTER TABLE fixtures ADD COLUMN match_type TEXT DEFAULT 'league'");
-      await this.run("UPDATE fixtures SET match_type = 'league' WHERE match_type IS NULL", []);
     }
+    await this.run("UPDATE fixtures SET match_type = 'league' WHERE match_type IS NULL", []);
   }
 
   async ensureTeamSeasonConcludedStatus() {
@@ -227,7 +243,13 @@ class Database {
           reject(err);
         } else {
           console.log('Connected to SQLite database');
-          this.createTables().then(resolve).catch(reject);
+          this.db.run('PRAGMA foreign_keys = ON', (pragmaError) => {
+            if (pragmaError) {
+              reject(pragmaError);
+            } else {
+              this.createTables().then(resolve).catch(reject);
+            }
+          });
         }
       });
     });
@@ -505,6 +527,8 @@ class Database {
 
     // Ensure fixtures.match_type exists for older databases.
     await this.ensureFixturesMatchTypeColumn();
+
+    await this.ensureFixtureUniquenessIndex();
 
     // Ensure fixtures forfeit columns exist for older databases.
     await this.ensureFixturesForfeitColumns();

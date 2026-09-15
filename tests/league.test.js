@@ -1,4 +1,5 @@
 const request = require('supertest');
+const FixtureManager = require('../src/models/fixture');
 const { createTestApp, adminHeaders } = require('./helpers');
 
 let app;
@@ -70,11 +71,11 @@ describe('league season lifecycle', () => {
   });
 
   test('create three teams', async () => {
-    for (const name of ['Alpha', 'Bravo', 'Charlie']) {
+    for (const [index, name] of ['Alpha', 'Bravo', 'Charlie'].entries()) {
       const res = await auth()
         .post('/api/teams')
         .set(adminHeaders())
-        .send({ name });
+        .send({ name, home_day: index + 1 });
       expect(res.status).toBe(201);
       teamIds.push(res.body.id);
     }
@@ -489,6 +490,14 @@ describe('division cup', () => {
         ? fixture.home_team_id
         : fixture.away_team_id
     );
+    expect(final.fixture_id).toBeTruthy();
+
+    const finalFixture = await db.get('SELECT * FROM fixtures WHERE id = ?', [final.fixture_id]);
+    const finalHome = await db.get('SELECT home_day FROM teams WHERE id = ?', [finalFixture.home_team_id]);
+    const finalWeekday = new Date(finalFixture.match_date).getUTCDay() || 7;
+    expect(finalFixture.match_date).toBeTruthy();
+    expect(finalWeekday).toBe(finalHome.home_day);
+    expect(new Date(finalFixture.match_date).getTime()).toBeGreaterThan(new Date(fixture.match_date).getTime());
   });
 });
 
@@ -523,30 +532,52 @@ describe('read endpoints', () => {
 });
 
 describe('season state transitions', () => {
-  test('fixture updates work while active', async () => {
+  test('fixture updates work while active on the home team day', async () => {
     const target = leagueFixtures[4];
+    const home = await db.get('SELECT home_day FROM teams WHERE id = ?', [target.home_team_id]);
+    const occupied = await db.all(
+      `SELECT id, match_date FROM fixtures
+       WHERE id <> ? AND team_season_id = ? AND match_date IS NOT NULL
+         AND (home_team_id IN (?, ?) OR away_team_id IN (?, ?))`,
+      [
+        target.id,
+        seasonId,
+        target.home_team_id,
+        target.away_team_id,
+        target.home_team_id,
+        target.away_team_id,
+      ]
+    );
+    const occupiedDates = new Set(occupied.map((fixture) => fixture.match_date.slice(0, 10)));
+    const allowed = FixtureManager.buildAllowedDatesUtc({
+      scheduleStart: new Date('2026-01-05T00:00:00.000Z'),
+      scheduleEnd: new Date('2026-06-30T23:59:59.999Z'),
+    });
+    const candidate = allowed.find((date) => {
+      const weekday = date.getUTCDay() || 7;
+      return weekday === home.home_day && !occupiedDates.has(date.toISOString().slice(0, 10));
+    });
     const res = await auth()
       .put(`/api/fixtures/${target.id}`)
       .set(adminHeaders())
-      .send({ match_date: '2026-02-10T19:00:00.000Z' });
+      .send({ match_date: candidate.toISOString() });
     expect(res.status).toBe(200);
-    expect(res.body.match_date).toContain('2026-02-10');
+    expect(res.body.match_date.slice(0, 10)).toBe(candidate.toISOString().slice(0, 10));
   });
 
-  test('manual fixture creation', async () => {
+  test('manual fixture creation rejects a duplicate pairing', async () => {
+    const existing = leagueFixtures[4];
     const res = await auth()
       .post('/api/fixtures')
       .set(adminHeaders())
       .send({
         team_season_id: seasonId,
         division_id: divisionId,
-        home_team_id: teamIds[0],
-        away_team_id: teamIds[1],
-        match_date: '2026-04-01T19:00:00.000Z',
+        home_team_id: existing.home_team_id,
+        away_team_id: existing.away_team_id,
       });
-    expect(res.status).toBe(201);
-    expect(res.body.status).toBe('scheduled');
-    expect(res.body.match_type).toBe('league');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already exists/i);
   });
 
   test('division edits are blocked while the season is active', async () => {
