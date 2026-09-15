@@ -39,7 +39,7 @@ async function createTestApp(suiteName) {
   return { app, db, dbPath, cleanup };
 }
 
-const ADMIN = { name: 'admin', password: '123' };
+const ADMIN = { name: 'admin', password: 'bndttadmin' };
 
 function adminHeaders(overrides = {}) {
   return {

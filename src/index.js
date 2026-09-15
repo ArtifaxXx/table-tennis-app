@@ -97,18 +97,20 @@ app.use(async (req, res, next) => {
     if (!name || !password) return next();
 
     const cacheKey = JSON.stringify([name, password]);
-    let canonical = adminCredentialCache.get(cacheKey);
-    if (canonical === undefined) {
+    let identity = adminCredentialCache.get(cacheKey);
+    if (identity === undefined) {
       const user = await db.get(
-        'SELECT name, password_hash FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+        'SELECT name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
         [name]
       );
-      canonical = user && verifyPassword(password, user.password_hash) ? user.name : null;
-      adminCredentialCache.set(cacheKey, canonical);
+      identity = user && verifyPassword(password, user.password_hash)
+        ? { name: user.name, role: user.role }
+        : null;
+      adminCredentialCache.set(cacheKey, identity);
     }
-    if (canonical) {
-      req.role = 'admin';
-      req.actorName = canonical;
+    if (identity) {
+      req.role = identity.role;
+      req.actorName = identity.name;
     }
     return next();
   } catch (error) {
@@ -243,6 +245,11 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin access required' });
 }
 
+function requireEditor(req, res, next) {
+  if (req.role === 'admin' || req.role === 'steward') return next();
+  return res.status(403).json({ error: 'Steward or admin access required' });
+}
+
 function requireSeedToken(req, res, next) {
   const expected = process.env.SEED_TOKEN;
   if (!expected) return next();
@@ -256,7 +263,7 @@ function requireSeedToken(req, res, next) {
 
 // API Routes
 app.get('/api/auth/role', async (req, res) => {
-  res.json({ role: req.role || 'viewer', name: req.role === 'admin' ? req.actorName : null });
+  res.json({ role: req.role || 'viewer', name: req.role !== 'viewer' ? req.actorName : null });
 });
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
@@ -265,7 +272,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
     const user = name && password
       ? await db.get(
-          'SELECT name, password_hash FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+          'SELECT name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
           [name]
         )
       : null;
@@ -281,8 +288,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     });
 
     if (!ok) return res.status(401).json({ role: 'viewer' });
-    adminCredentialCache.set(JSON.stringify([name, password]), user.name);
-    return res.json({ role: 'admin', name: user.name });
+    adminCredentialCache.set(JSON.stringify([name, password]), { name: user.name, role: user.role });
+    return res.json({ role: user.role, name: user.name });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -319,7 +326,7 @@ app.post('/api/track', trackLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
+app.get('/api/admin/activity-logs', requireEditor, async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -357,7 +364,7 @@ app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
+app.put('/api/auth/admin-password', requireEditor, async (req, res) => {
   try {
     const nextPassword = req.body && typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
     if (!nextPassword || !nextPassword.trim()) {
@@ -367,7 +374,7 @@ app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
       throw new Error('Password must be at least 3 characters');
     }
     if (!req.actorName) {
-      throw new Error('No admin account associated with this session');
+      throw new Error('No privileged account associated with this session');
     }
 
     await db.run(
@@ -392,7 +399,7 @@ app.put('/api/auth/admin-password', requireAdmin, async (req, res) => {
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const rows = await db.all(
-      'SELECT id, name, created_at FROM admin_users WHERE active = 1 ORDER BY name'
+      'SELECT id, name, role, created_at FROM admin_users WHERE active = 1 ORDER BY role, name'
     );
     res.json(rows);
   } catch (error) {
@@ -408,21 +415,21 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     if (password.length < 3) throw new Error('Password must be at least 3 characters');
 
     const existing = await db.get('SELECT id FROM admin_users WHERE lower(name) = lower(?)', [name]);
-    if (existing) throw new Error('An admin with that name already exists');
+    if (existing) throw new Error('An account with that name already exists');
 
     await db.run(
-      'INSERT INTO admin_users (id, name, password_hash) VALUES (?, ?, ?)',
-      [uuidv4(), name, hashPassword(password)]
+      'INSERT INTO admin_users (id, name, password_hash, role) VALUES (?, ?, ?, ?)',
+      [uuidv4(), name, hashPassword(password), 'steward']
     );
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'create_admin',
+      action: 'create_steward',
       entity: 'admin_users',
-      details: { name },
+      details: { name, role: 'steward' },
       req,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, role: 'steward' });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -433,8 +440,8 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     const password = req.body && typeof req.body.password === 'string' ? req.body.password.trim() : '';
     if (password.length < 3) throw new Error('Password must be at least 3 characters');
 
-    const target = await db.get('SELECT id, name FROM admin_users WHERE id = ?', [req.params.id]);
-    if (!target) throw new Error('Admin user not found');
+    const target = await db.get("SELECT id, name FROM admin_users WHERE id = ? AND role = 'steward'", [req.params.id]);
+    if (!target) throw new Error('Steward not found');
 
     await db.run(
       'UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -443,7 +450,7 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'reset_admin_password',
+      action: 'reset_steward_password',
       entity: 'admin_users',
       entityId: target.id,
       details: { name: target.name },
@@ -457,18 +464,14 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
-    const target = await db.get('SELECT id, name FROM admin_users WHERE id = ?', [req.params.id]);
-    if (!target) throw new Error('Admin user not found');
-    if (target.name === req.actorName) throw new Error('You cannot delete your own account');
-
-    const count = await db.get('SELECT COUNT(*) AS c FROM admin_users WHERE active = 1');
-    if (count && count.c <= 1) throw new Error('Cannot delete the last admin account');
+    const target = await db.get("SELECT id, name FROM admin_users WHERE id = ? AND role = 'steward'", [req.params.id]);
+    if (!target) throw new Error('Steward not found');
 
     await db.run('DELETE FROM admin_users WHERE id = ?', [target.id]);
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'delete_admin',
+      action: 'delete_steward',
       entity: 'admin_users',
       entityId: target.id,
       details: { name: target.name },
@@ -480,7 +483,7 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/database-backup', requireAdmin, async (req, res) => {
+app.get('/api/admin/database-backup', requireEditor, async (req, res) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `league-backup-${timestamp}.db`;
   const backupPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-${filename}`);
@@ -670,7 +673,7 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/populate-real', requireAdmin, requireSeedToken, async (req, res) => {
+app.post('/api/admin/populate-real', requireEditor, requireSeedToken, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
   }
@@ -695,7 +698,7 @@ app.post('/api/admin/populate-real', requireAdmin, requireSeedToken, async (req,
   }
 });
 
-app.post('/api/admin/seed', requireAdmin, requireSeedToken, async (req, res) => {
+app.post('/api/admin/seed', requireEditor, requireSeedToken, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
   }
@@ -728,7 +731,7 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
-app.post('/api/news', requireAdmin, async (req, res) => {
+app.post('/api/news', requireEditor, async (req, res) => {
   try {
     const item = await newsManager.createNews(req.body);
     res.status(201).json(item);
@@ -737,7 +740,7 @@ app.post('/api/news', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/news/:id', requireAdmin, async (req, res) => {
+app.put('/api/news/:id', requireEditor, async (req, res) => {
   try {
     const item = await newsManager.updateNews(req.params.id, req.body);
     res.json(item);
@@ -746,7 +749,7 @@ app.put('/api/news/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/news/:id', requireAdmin, async (req, res) => {
+app.delete('/api/news/:id', requireEditor, async (req, res) => {
   try {
     await newsManager.deleteNews(req.params.id);
     res.status(204).send();
@@ -755,7 +758,7 @@ app.delete('/api/news/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/news/:id/pin', requireAdmin, async (req, res) => {
+app.post('/api/news/:id/pin', requireEditor, async (req, res) => {
   try {
     await newsManager.pinNews(req.params.id);
     res.json({ ok: true });
@@ -764,7 +767,7 @@ app.post('/api/news/:id/pin', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/news/:id/unpin', requireAdmin, async (req, res) => {
+app.post('/api/news/:id/unpin', requireEditor, async (req, res) => {
   try {
     await newsManager.unpinNews(req.params.id);
     res.json({ ok: true });
@@ -782,7 +785,7 @@ app.get('/api/players', async (req, res) => {
   }
 });
 
-app.post('/api/players', requireAdmin, async (req, res) => {
+app.post('/api/players', requireEditor, async (req, res) => {
   try {
     const player = await playerManager.createPlayer(req.body);
     res.status(201).json(player);
@@ -803,7 +806,7 @@ app.get('/api/players/:id', async (req, res) => {
   }
 });
 
-app.put('/api/players/:id', requireAdmin, async (req, res) => {
+app.put('/api/players/:id', requireEditor, async (req, res) => {
   try {
     const player = await playerManager.updatePlayer(req.params.id, req.body);
     res.json(player);
@@ -812,7 +815,7 @@ app.put('/api/players/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/players/:id', requireAdmin, async (req, res) => {
+app.delete('/api/players/:id', requireEditor, async (req, res) => {
   try {
     await playerManager.deletePlayer(req.params.id);
     res.status(204).send();
@@ -895,7 +898,7 @@ app.get('/api/teams', async (req, res) => {
   }
 });
 
-app.post('/api/teams', requireAdmin, async (req, res) => {
+app.post('/api/teams', requireEditor, async (req, res) => {
   try {
     const team = await teamManager.createTeam(req.body);
     res.status(201).json(team);
@@ -916,7 +919,7 @@ app.get('/api/teams/:id', async (req, res) => {
   }
 });
 
-app.put('/api/teams/:id', requireAdmin, async (req, res) => {
+app.put('/api/teams/:id', requireEditor, async (req, res) => {
   try {
     const team = await teamManager.updateTeam(req.params.id, req.body);
     res.json(team);
@@ -925,7 +928,7 @@ app.put('/api/teams/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/teams/:id', requireAdmin, async (req, res) => {
+app.delete('/api/teams/:id', requireEditor, async (req, res) => {
   try {
     await teamManager.deleteTeam(req.params.id);
     res.status(204).send();
@@ -934,7 +937,7 @@ app.delete('/api/teams/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/teams/:id/roster', requireAdmin, async (req, res) => {
+app.put('/api/teams/:id/roster', requireEditor, async (req, res) => {
   try {
     const roster = await teamManager.setTeamRoster(req.params.id, req.body);
     res.json(roster);
@@ -952,7 +955,7 @@ app.get('/api/team-seasons/:seasonId/divisions', async (req, res) => {
   }
 });
 
-app.post('/api/team-seasons/:seasonId/divisions', requireAdmin, async (req, res) => {
+app.post('/api/team-seasons/:seasonId/divisions', requireEditor, async (req, res) => {
   try {
     const division = await teamSeasonDivisionManager.createDivision(req.params.seasonId, req.body);
     res.status(201).json(division);
@@ -961,7 +964,7 @@ app.post('/api/team-seasons/:seasonId/divisions', requireAdmin, async (req, res)
   }
 });
 
-app.put('/api/divisions/:divisionId', requireAdmin, async (req, res) => {
+app.put('/api/divisions/:divisionId', requireEditor, async (req, res) => {
   try {
     const division = await teamSeasonDivisionManager.updateDivision(req.params.divisionId, req.body);
     res.json(division);
@@ -970,7 +973,7 @@ app.put('/api/divisions/:divisionId', requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/divisions/:divisionId', requireAdmin, async (req, res) => {
+app.delete('/api/divisions/:divisionId', requireEditor, async (req, res) => {
   try {
     const result = await teamSeasonDivisionManager.deleteDivision(req.params.divisionId);
     res.json(result);
@@ -988,7 +991,7 @@ app.get('/api/divisions/:divisionId/teams', async (req, res) => {
   }
 });
 
-app.put('/api/divisions/:divisionId/teams', requireAdmin, async (req, res) => {
+app.put('/api/divisions/:divisionId/teams', requireEditor, async (req, res) => {
   try {
     const teams = await teamSeasonDivisionManager.setDivisionTeams(req.params.divisionId, req.body.teamIds);
     res.json(teams);
@@ -1029,7 +1032,7 @@ app.get('/api/fixtures/counts-by-season', async (req, res) => {
   }
 });
 
-app.post('/api/fixtures', requireAdmin, async (req, res) => {
+app.post('/api/fixtures', requireEditor, async (req, res) => {
   try {
     const team_season_id = await resolveTeamSeasonId(req);
     if (!team_season_id) {
@@ -1064,7 +1067,7 @@ app.get('/api/fixtures/:id', async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id', requireEditor, async (req, res) => {
   try {
     const { match_date } = req.body;
     if (!match_date) {
@@ -1077,7 +1080,7 @@ app.put('/api/fixtures/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, res) => {
+app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, res) => {
   try {
     const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
     if (!team_season_id) {
@@ -1147,7 +1150,7 @@ app.post('/api/fixtures/generate-schedule/preview', requireAdmin, async (req, re
   }
 });
 
-app.post('/api/fixtures/generate-schedule', requireAdmin, async (req, res) => {
+app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
   try {
     const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
     if (!team_season_id) {
@@ -1222,7 +1225,7 @@ app.get('/api/cups/division', async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id/lineups/:side', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id/lineups/:side', requireEditor, async (req, res) => {
   try {
     await fixtureManager.setLineup(req.params.id, req.params.side, req.body.playerIds);
     const fixture = await fixtureManager.getFixtureById(req.params.id);
@@ -1232,7 +1235,7 @@ app.put('/api/fixtures/:id/lineups/:side', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/fixtures/:id/matches/:matchNumber/games', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id/matches/:matchNumber/games', requireEditor, async (req, res) => {
   try {
     const fixture = await fixtureManager.setMatchGames(req.params.id, parseInt(req.params.matchNumber, 10), req.body.games);
     res.json(fixture);
@@ -1241,7 +1244,7 @@ app.put('/api/fixtures/:id/matches/:matchNumber/games', requireAdmin, async (req
   }
 });
 
-app.put('/api/fixtures/:id/matches/games', requireAdmin, async (req, res) => {
+app.put('/api/fixtures/:id/matches/games', requireEditor, async (req, res) => {
   try {
     const fixture = await fixtureManager.setFixtureMatchGames(req.params.id, req.body.matches);
     res.json(fixture);
@@ -1250,7 +1253,7 @@ app.put('/api/fixtures/:id/matches/games', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/fixtures/:id/forfeit', requireAdmin, async (req, res) => {
+app.post('/api/fixtures/:id/forfeit', requireEditor, async (req, res) => {
   try {
     const winner_team_id = req.body && req.body.winner_team_id ? req.body.winner_team_id : null;
     if (!winner_team_id) {
@@ -1334,7 +1337,7 @@ app.get('/api/matches', async (req, res) => {
   }
 });
 
-app.post('/api/matches', requireAdmin, async (req, res) => {
+app.post('/api/matches', requireEditor, async (req, res) => {
   try {
     const match = await matchManager.createMatch(req.body);
     res.status(201).json(match);
@@ -1355,7 +1358,7 @@ app.get('/api/matches/:id', async (req, res) => {
   }
 });
 
-app.put('/api/matches/:id', requireAdmin, async (req, res) => {
+app.put('/api/matches/:id', requireEditor, async (req, res) => {
   try {
     const match = await matchManager.updateMatch(req.params.id, req.body);
     res.json(match);
@@ -1382,7 +1385,7 @@ app.get('/api/statistics', async (req, res) => {
   }
 });
 
-app.get('/api/schedule', requireAdmin, async (req, res) => {
+app.get('/api/schedule', requireEditor, async (req, res) => {
   try {
     const schedule = await leagueManager.generateSchedule();
     res.json(schedule);

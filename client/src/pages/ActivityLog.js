@@ -66,7 +66,7 @@ const ActivityLog = () => {
   if (!isAdmin) {
     return (
       <Card>
-        <div className="text-center py-8 text-gray-600">Admin access required to view the activity log.</div>
+        <div className="text-center py-8 text-gray-600">Admin or steward access required to view the activity log.</div>
       </Card>
     );
   }

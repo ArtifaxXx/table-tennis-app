@@ -1,7 +1,7 @@
 const request = require('supertest');
 const { createTestApp, adminHeaders, ADMIN } = require('./helpers');
 
-describe('auth and admin accounts', () => {
+describe('auth and steward accounts', () => {
   let app;
   let cleanup;
 
@@ -20,6 +20,14 @@ describe('auth and admin accounts', () => {
         .send({ name: ADMIN.name, password: ADMIN.password });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ role: 'admin', name: 'admin' });
+    });
+
+    test('uses the new default password instead of the legacy default', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ name: ADMIN.name, password: '123' });
+      expect(res.status).toBe(401);
+      expect(res.body.role).toBe('viewer');
     });
 
     test('rejects a wrong password with 401', async () => {
@@ -90,26 +98,27 @@ describe('auth and admin accounts', () => {
     });
   });
 
-  describe('admin user management', () => {
-    test('admin can create an account and the new account can log in', async () => {
+  describe('steward management', () => {
+    test('admin can create a steward and the steward can log in', async () => {
       const create = await request(app)
         .post('/api/admin/users')
         .set(adminHeaders())
-        .send({ name: 'Ref Admin', password: 'pw12345' });
+        .send({ name: 'Ref Steward', password: 'pw12345', role: 'admin' });
       expect(create.status).toBe(200);
+      expect(create.body.role).toBe('steward');
 
       const login = await request(app)
         .post('/api/auth/login')
-        .send({ name: 'ref admin', password: 'pw12345' });
+        .send({ name: 'ref steward', password: 'pw12345' });
       expect(login.status).toBe(200);
-      expect(login.body.name).toBe('Ref Admin');
+      expect(login.body).toEqual({ role: 'steward', name: 'Ref Steward' });
     });
 
     test('duplicate names are rejected', async () => {
       const res = await request(app)
         .post('/api/admin/users')
         .set(adminHeaders())
-        .send({ name: 'ref admin', password: 'pw12345' });
+        .send({ name: 'ref steward', password: 'pw12345' });
       expect(res.status).toBe(400);
     });
 
@@ -125,7 +134,9 @@ describe('auth and admin accounts', () => {
       const res = await request(app).get('/api/admin/users').set(adminHeaders());
       expect(res.status).toBe(200);
       const names = res.body.map((u) => u.name);
-      expect(names).toEqual(expect.arrayContaining(['admin', 'Ref Admin']));
+      expect(names).toEqual(expect.arrayContaining(['admin', 'Ref Steward']));
+      expect(res.body.find((u) => u.name === 'admin').role).toBe('admin');
+      expect(res.body.find((u) => u.name === 'Ref Steward').role).toBe('steward');
       for (const u of res.body) {
         expect(u.password_hash).toBeUndefined();
         expect(u.password).toBeUndefined();
@@ -134,7 +145,7 @@ describe('auth and admin accounts', () => {
 
     test('password reset invalidates old password and accepts new one', async () => {
       const list = await request(app).get('/api/admin/users').set(adminHeaders());
-      const target = list.body.find((u) => u.name === 'Ref Admin');
+      const target = list.body.find((u) => u.name === 'Ref Steward');
 
       const reset = await request(app)
         .put(`/api/admin/users/${target.id}`)
@@ -144,12 +155,12 @@ describe('auth and admin accounts', () => {
 
       const oldLogin = await request(app)
         .post('/api/auth/login')
-        .send({ name: 'Ref Admin', password: 'pw12345' });
+        .send({ name: 'Ref Steward', password: 'pw12345' });
       expect(oldLogin.status).toBe(401);
 
       const newLogin = await request(app)
         .post('/api/auth/login')
-        .send({ name: 'Ref Admin', password: 'brandnew1' });
+        .send({ name: 'Ref Steward', password: 'brandnew1' });
       expect(newLogin.status).toBe(200);
     });
 
@@ -162,9 +173,9 @@ describe('auth and admin accounts', () => {
       expect(res.status).toBe(400);
     });
 
-    test('another admin can be deleted', async () => {
+    test('a steward can be deleted', async () => {
       const list = await request(app).get('/api/admin/users').set(adminHeaders());
-      const target = list.body.find((u) => u.name === 'Ref Admin');
+      const target = list.body.find((u) => u.name === 'Ref Steward');
       const res = await request(app)
         .delete(`/api/admin/users/${target.id}`)
         .set(adminHeaders());
@@ -172,11 +183,11 @@ describe('auth and admin accounts', () => {
 
       const login = await request(app)
         .post('/api/auth/login')
-        .send({ name: 'Ref Admin', password: 'brandnew1' });
+        .send({ name: 'Ref Steward', password: 'brandnew1' });
       expect(login.status).toBe(401);
     });
 
-    test('the last remaining admin cannot be deleted', async () => {
+    test('the admin account cannot be deleted', async () => {
       const list = await request(app).get('/api/admin/users').set(adminHeaders());
       expect(list.body).toHaveLength(1);
       // self-delete guard fires first for 'admin'; both guards make it undeletable

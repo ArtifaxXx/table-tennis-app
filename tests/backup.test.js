@@ -64,21 +64,26 @@ describe('database backup and snapshot restore', () => {
   });
 
   test('backup restore prevents the current administrator from being locked out', async () => {
-    await request(app)
-      .post('/api/admin/users')
+    const changedPassword = 'changed-after-backup';
+    const change = await request(app)
+      .put('/api/auth/admin-password')
       .set(adminHeaders())
-      .send({ name: 'Backup Operator', password: 'operator-password' });
+      .send({ newPassword: changedPassword });
+    expect(change.status).toBe(200);
 
     const res = await request(app)
       .post('/api/admin/database-restore')
-      .set(adminHeaders({ name: 'Backup Operator', password: 'operator-password' }))
+      .set(adminHeaders({ password: changedPassword }))
       .set('Content-Type', 'application/octet-stream')
       .send(backupBuffer);
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/current admin credentials/i);
 
-    const operator = await db.get("SELECT name FROM admin_users WHERE name = 'Backup Operator'");
-    expect(operator.name).toBe('Backup Operator');
+    const restorePassword = await request(app)
+      .put('/api/auth/admin-password')
+      .set(adminHeaders({ password: changedPassword }))
+      .send({ newPassword: 'bndttadmin' });
+    expect(restorePassword.status).toBe(200);
   });
 
   test('admin can restore a downloaded backup and replace newer data', async () => {

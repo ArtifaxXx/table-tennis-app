@@ -59,7 +59,7 @@ class Database {
 
     const row = await this.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
     if (!row || row.value == null) {
-      const initial = process.env.ADMIN_PASSWORD || '123';
+      const initial = process.env.ADMIN_PASSWORD || 'bndttadmin';
       await this.run(
         `INSERT INTO app_settings (key, value)
          VALUES (?, ?)`,
@@ -73,13 +73,43 @@ class Database {
     if (row && row.c > 0) return;
 
     const setting = await this.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
-    const password = (setting && setting.value) || process.env.ADMIN_PASSWORD || '123';
+    const password = (setting && setting.value) || process.env.ADMIN_PASSWORD || 'bndttadmin';
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
     await this.run(
-      'INSERT INTO admin_users (id, name, password_hash) VALUES (?, ?, ?)',
-      [uuidv4(), 'admin', hash]
+      'INSERT INTO admin_users (id, name, password_hash, role) VALUES (?, ?, ?, ?)',
+      [uuidv4(), 'admin', hash, 'admin']
     );
+  }
+
+  async ensureAdminUserRoles() {
+    const columns = await this.all('PRAGMA table_info(admin_users)');
+    const hadRole = columns.some((column) => column.name === 'role');
+    if (!hadRole) {
+      await this.run("ALTER TABLE admin_users ADD COLUMN role TEXT NOT NULL DEFAULT 'steward'");
+      const password = process.env.ADMIN_PASSWORD || 'bndttadmin';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+      await this.run(
+        "UPDATE admin_users SET role = 'admin', password_hash = ? WHERE lower(name) = 'admin'",
+        [hash]
+      );
+      await this.run("DELETE FROM admin_users WHERE lower(name) <> 'admin'");
+    } else {
+      await this.run("UPDATE admin_users SET role = 'admin' WHERE lower(name) = 'admin'");
+      await this.run("DELETE FROM admin_users WHERE role = 'admin' AND lower(name) <> 'admin'");
+    }
+
+    const admin = await this.get("SELECT id FROM admin_users WHERE lower(name) = 'admin'");
+    if (!admin) {
+      const password = process.env.ADMIN_PASSWORD || 'bndttadmin';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+      await this.run(
+        'INSERT INTO admin_users (id, name, password_hash, role) VALUES (?, ?, ?, ?)',
+        [uuidv4(), 'admin', hash, 'admin']
+      );
+    }
   }
 
   async ensureFixturesForfeitColumns() {
@@ -233,6 +263,7 @@ class Database {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'steward' CHECK(role IN ('admin', 'steward')),
         active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -499,6 +530,7 @@ class Database {
     await this.ensureDefaultAdminPassword();
 
     // Seed the first admin account from the legacy shared password when the table is empty.
+    await this.ensureAdminUserRoles();
     await this.ensureInitialAdminUser();
   }
 

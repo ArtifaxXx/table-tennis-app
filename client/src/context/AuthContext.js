@@ -4,6 +4,8 @@ import axios from 'axios';
 const AuthContext = createContext({
   role: 'viewer',
   isAdmin: false,
+  isSystemAdmin: false,
+  isSteward: false,
   refreshRole: async () => {},
 });
 
@@ -13,7 +15,7 @@ export const AuthProvider = ({ children }) => {
   const refreshRole = useCallback(async () => {
     try {
       const r = await axios.get('/api/auth/role');
-      setRole(r?.data?.role === 'admin' ? 'admin' : 'viewer');
+      setRole(['admin', 'steward'].includes(r?.data?.role) ? r.data.role : 'viewer');
     } catch (e) {
       setRole('viewer');
     }
@@ -26,7 +28,9 @@ export const AuthProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       role,
-      isAdmin: role === 'admin',
+      isAdmin: role === 'admin' || role === 'steward',
+      isSystemAdmin: role === 'admin',
+      isSteward: role === 'steward',
       refreshRole,
     }),
     [role, refreshRole]

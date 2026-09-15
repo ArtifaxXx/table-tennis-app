@@ -52,14 +52,14 @@ const Navbar = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authOpen, role]);
 
-  const addAdminUser = async () => {
+  const addSteward = async () => {
     setAuthLoading(true);
     try {
       await axios.post('/api/admin/users', { name: newAdminName.trim(), password: newAdminPassword });
       setNewAdminName('');
       setNewAdminPassword('');
       await fetchAdminUsers();
-      toast.success('Admin account created');
+      toast.success('Steward account created');
     } catch (e) {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
@@ -73,7 +73,7 @@ const Navbar = () => {
       await axios.delete(`/api/admin/users/${user.id}`);
       setConfirmDeleteId(null);
       await fetchAdminUsers();
-      toast.success('Admin account removed');
+      toast.success('Steward account removed');
     } catch (e) {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
@@ -104,10 +104,10 @@ const Navbar = () => {
   const refreshRole = async () => {
     try {
       const r = await axios.get('/api/auth/role');
-      const nextRole = r?.data?.role === 'admin' ? 'admin' : 'viewer';
+      const nextRole = ['admin', 'steward'].includes(r?.data?.role) ? r.data.role : 'viewer';
       setRole(nextRole);
       await auth.refreshRole();
-      if (nextRole !== 'admin') {
+      if (nextRole === 'viewer') {
         try {
           if (window.localStorage.getItem(ADMIN_PASSWORD_KEY)) {
             window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
@@ -231,7 +231,7 @@ const Navbar = () => {
     try {
       const name = nameInput.trim();
       const r = await axios.post('/api/auth/login', { password: passwordInput, name });
-      if (r?.data?.role !== 'admin') {
+      if (!['admin', 'steward'].includes(r?.data?.role)) {
         toast.error('Incorrect name or password');
         return;
       }
@@ -287,7 +287,7 @@ const Navbar = () => {
     { path: '/activity', label: 'Activity', icon: ScrollText, adminOnly: true },
   ];
 
-  const visibleNavItems = navItems.filter((item) => !item.adminOnly || role === 'admin');
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || role !== 'viewer');
 
   return (
     <nav className="bg-white shadow-lg">
@@ -324,12 +324,12 @@ const Navbar = () => {
                 type="button"
                 className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100"
                 onClick={openAuth}
-                title={role === 'admin' ? 'Admin enabled (click to manage)' : 'Viewer mode (click to enable admin)'}
+                title={role !== 'viewer' ? `${role === 'admin' ? 'Admin' : 'Steward'} enabled (click to manage)` : 'Viewer mode (click to sign in)'}
               >
-                <span className={`hidden sm:inline text-xs font-semibold ${role === 'admin' ? 'text-green-700' : 'text-gray-600'}`}>
-                  {role === 'admin' ? 'Admin' : 'Viewer'}
+                <span className={`hidden sm:inline text-xs font-semibold ${role !== 'viewer' ? 'text-green-700' : 'text-gray-600'}`}>
+                  {role === 'admin' ? 'Admin' : role === 'steward' ? 'Steward' : 'Viewer'}
                 </span>
-                <UserCircle size={22} className={role === 'admin' ? 'text-green-700' : 'text-gray-700'} />
+                <UserCircle size={22} className={role !== 'viewer' ? 'text-green-700' : 'text-gray-700'} />
               </button>
             </div>
           </div>
@@ -390,10 +390,10 @@ const Navbar = () => {
               </button>
             </div>
 
-            {role === 'admin' ? (
+            {role !== 'viewer' ? (
               <div className="space-y-4">
                 <div className="text-sm text-gray-700">
-                  You are currently signed in as admin{getStoredAdminName() ? ` — ${getStoredAdminName()}` : ''}.
+                  You are currently signed in as {role}{getStoredAdminName() ? ` — ${getStoredAdminName()}` : ''}.
                 </div>
 
                 <div className="border-t pt-4 space-y-2">
@@ -417,10 +417,11 @@ const Navbar = () => {
                   </div>
                 </div>
 
-                <div className="border-t pt-4 space-y-2">
-                  <div className="text-sm font-semibold text-gray-800">Admin accounts</div>
+                {role === 'admin' && (
+                  <div className="border-t pt-4 space-y-2">
+                  <div className="text-sm font-semibold text-gray-800">Steward accounts</div>
                   <div className="space-y-2">
-                    {adminUsers.map((user) => (
+                    {adminUsers.filter((user) => user.role === 'steward').map((user) => (
                       <div key={user.id} className="text-sm">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-gray-800">
@@ -524,18 +525,19 @@ const Navbar = () => {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      onClick={addAdminUser}
+                      onClick={addSteward}
                       disabled={authLoading || !newAdminName.trim() || newAdminPassword.length < 3}
                     >
                       Add
                     </button>
                   </div>
                 </div>
+                )}
 
                 <div className="border-t pt-4 space-y-4">
                   <div className="space-y-2">
                     <div className="text-sm font-semibold text-gray-800">Database backup</div>
-                    <div className="text-sm text-gray-700">Download a consistent copy or restore a previously downloaded backup.</div>
+                    <div className="text-sm text-gray-700">{role === 'admin' ? 'Download a consistent copy or restore a previously downloaded backup.' : 'Download a consistent copy of the current database.'}</div>
                     <div className="flex justify-end">
                       <button
                         className="btn btn-success"
@@ -546,6 +548,8 @@ const Navbar = () => {
                         {backupLoading ? 'Preparing...' : 'Download Backup'}
                       </button>
                     </div>
+                    {role === 'admin' && (
+                      <>
                     <input
                       key={restoreBackupFile ? restoreBackupFile.name : 'no-backup-selected'}
                       className="input w-full"
@@ -590,8 +594,11 @@ const Navbar = () => {
                         )}
                       </div>
                     )}
+                      </>
+                    )}
                   </div>
 
+                  {role === 'admin' && (
                   <div className="border-t pt-4">
                     <div className="text-sm font-semibold text-gray-800">Restore Premier Division snapshot</div>
                     <div className="text-sm text-gray-700">Overwrites the current database with the saved Premier Division season state.</div>
@@ -628,6 +635,7 @@ const Navbar = () => {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-2">
@@ -641,13 +649,13 @@ const Navbar = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="text-sm text-gray-700">Sign in with your admin name and password to enable editing. Your actions are recorded in the activity log.</div>
+                <div className="text-sm text-gray-700">Sign in with your admin or steward name and password to enable editing. Your actions are recorded in the activity log.</div>
                 <input
                   className="input w-full"
                   type="text"
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
-                  placeholder="Admin name"
+                  placeholder="Account name"
                   autoFocus
                 />
                 <input
@@ -655,7 +663,7 @@ const Navbar = () => {
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="Admin password"
+                  placeholder="Password"
                 />
                 <div className="flex justify-end gap-2">
                   <button className="btn" type="button" onClick={closeAuth} disabled={authLoading}>
@@ -667,7 +675,7 @@ const Navbar = () => {
                     onClick={enableAdmin}
                     disabled={authLoading || !passwordInput || !nameInput.trim()}
                   >
-                    Enable Admin
+                    Sign In
                   </button>
                 </div>
               </div>

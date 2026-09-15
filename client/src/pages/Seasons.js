@@ -9,7 +9,7 @@ import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 
 const Seasons = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSystemAdmin } = useAuth();
   const { refreshSeasons, setSelectedSeasonId: selectSeason } = useDivisionContext();
   const toast = useToast();
 
@@ -202,7 +202,7 @@ const Seasons = () => {
 
   const createSeason = async (e) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     try {
       if (!creatingScheduleStart || !creatingScheduleEnd) {
         toast.error('Start and end dates are required');
@@ -240,7 +240,7 @@ const Seasons = () => {
   };
 
   const startSeason = async (id) => {
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     try {
       await axios.post(`/api/team-seasons/${id}/start`, {});
       await fetchData();
@@ -254,7 +254,7 @@ const Seasons = () => {
   };
 
   const reopenSeason = async (id) => {
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     try {
       await axios.post(`/api/team-seasons/${id}/reopen`, {});
       await fetchData();
@@ -267,7 +267,7 @@ const Seasons = () => {
   };
 
   const finishSeason = async (id) => {
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     try {
       await axios.post(`/api/team-seasons/${id}/stop`, {});
       await fetchData();
@@ -280,7 +280,7 @@ const Seasons = () => {
   };
 
   const deleteSeason = async (id) => {
-    if (!isAdmin) return;
+    if (!isSystemAdmin) return;
     if (!window.confirm('Delete this season? This cannot be undone.')) return;
     try {
       await axios.delete(`/api/team-seasons/${id}`);
@@ -339,7 +339,7 @@ const Seasons = () => {
             <div className="text-sm text-gray-600">
               Active: <span className="font-medium">{activeSeason?.name || 'None'}</span>
             </div>
-            {isAdmin ? (
+            {isSystemAdmin ? (
               <button
                 type="button"
                 className="btn btn-primary flex items-center gap-2"
@@ -353,7 +353,7 @@ const Seasons = () => {
         }
       />
 
-      {isAdmin && showSeasonForm && (
+      {isSystemAdmin && showSeasonForm && (
         <Card>
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Add New Season</h3>
           <form onSubmit={createSeason} className="space-y-4">
@@ -461,18 +461,18 @@ const Seasons = () => {
                           </span>
                         </button>
                       )}
-                      {isAdmin && s.status === 'ready' && (
+                      {isSystemAdmin && s.status === 'ready' && (
                         <button className="btn btn-success" onClick={() => startSeason(s.id)}>
                           Start
                         </button>
                       )}
-                      {isAdmin && s.status === 'active' && (
+                      {isSystemAdmin && s.status === 'active' && (
                         <button className="btn btn-warning" onClick={() => finishSeason(s.id)}>
                           Close
                         </button>
                       )}
 
-                      {isAdmin && s.status === 'concluded' && (() => {
+                      {isSystemAdmin && s.status === 'concluded' && (() => {
                         const blocked = activeSeason && activeSeason.id !== s.id;
                         const reason = blocked ? 'Cannot reopen while another season is in progress' : 'Reopen this season';
                         return (
@@ -487,7 +487,7 @@ const Seasons = () => {
                         );
                       })()}
 
-                      {isAdmin && s.status !== 'active' && (
+                      {isSystemAdmin && s.status !== 'active' && (
                         <button className="btn btn-danger" onClick={() => deleteSeason(s.id)}>
                           Delete
                         </button>
