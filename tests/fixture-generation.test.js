@@ -69,7 +69,7 @@ describe('fixture generation rules', () => {
     expect(pairs).toEqual(expect.arrayContaining(['a-b', 'b-a', 'a-c', 'c-a', 'b-c', 'c-b']));
   });
 
-  test('uses only home days, leaves unavailable dates blank, logs counts, and rejects reruns', async () => {
+  test('uses home days when set, any weekday otherwise, logs counts, and rejects reruns', async () => {
     const { season, division } = await createSeason(
       app,
       'Home Day Season',
@@ -101,7 +101,8 @@ describe('fixture generation rules', () => {
       (fixture) => fixture.match_type === 'league' && fixture.home_team_id === noHomeDay.id
     );
     expect(thursdayHome.match_date).toContain('2027-01-07T19:00:00.000Z');
-    expect(missingHomeDay.match_date).toBeNull();
+    // No home day configured: any remaining eligible weekday may be used.
+    expect(missingHomeDay.match_date).toContain('2027-01-08T19:00:00.000Z');
 
     const activity = await db.get(
       "SELECT details FROM activity_logs WHERE action = 'fixture_creation' ORDER BY id DESC LIMIT 1"
@@ -111,7 +112,7 @@ describe('fixture generation rules', () => {
       leagueFixtures: 2,
       cupFixtures: 1,
       totalFixtures: 3,
-      unscheduledFixtures: 2,
+      unscheduledFixtures: 1,
     });
 
     const rerun = await request(app)

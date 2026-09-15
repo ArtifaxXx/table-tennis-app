@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper, ScrollText } from 'lucide-react';
+import { Trophy, Users, CalendarDays, BarChart3, LayoutDashboard, User, Table2, Archive, UserCircle, Menu, X, Newspaper, ScrollText, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -289,6 +289,7 @@ const Navbar = () => {
     { path: '/news', label: 'Announcements', icon: Newspaper },
     { path: '/players', label: 'Players', icon: User },
     { path: '/teams', label: 'Teams', icon: Users },
+    { path: '/clubs', label: 'Clubs', icon: Building2 },
     { path: '/fixtures', label: 'Season Fixtures', icon: CalendarDays },
     { path: '/team-standings', label: 'Standings', icon: Table2 },
     { path: '/cup', label: 'Cup', icon: Trophy },

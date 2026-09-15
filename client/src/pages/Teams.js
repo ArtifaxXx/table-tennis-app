@@ -109,11 +109,20 @@ const SearchableSelect = ({
   );
 };
 
+const WEEKDAYS = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+];
+
 const Teams = () => {
   const { isAdmin } = useAuth();
   const toast = useToast();
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
+  const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [teamSearchTerm, setTeamSearchTerm] = useState('');
@@ -121,8 +130,8 @@ const Teams = () => {
   const [teamName, setTeamName] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [clubAddress, setClubAddress] = useState('');
-  const [homeDay, setHomeDay] = useState('');
+  const [clubId, setClubId] = useState('');
+  const [homeDays, setHomeDays] = useState([]);
   const [mainIds, setMainIds] = useState(['', '', '']);
   const SUB_COUNT = 10;
   const [subIds, setSubIds] = useState(Array(SUB_COUNT).fill(''));
@@ -140,14 +149,21 @@ const Teams = () => {
     [players]
   );
 
+  const clubOptions = useMemo(
+    () => clubs.map((c) => ({ value: c.id, label: c.address ? `${c.name} — ${c.address}` : c.name })),
+    [clubs]
+  );
+
   const fetchData = useCallback(async () => {
     try {
-      const [t, p] = await Promise.all([
+      const [t, p, c] = await Promise.all([
         axios.get('/api/teams'),
         axios.get('/api/players'),
+        axios.get('/api/clubs'),
       ]);
       setTeams(t.data);
       setPlayers(p.data);
+      setClubs(c.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -165,16 +181,14 @@ const Teams = () => {
     return () => window.removeEventListener('focus', onFocus);
   }, [fetchData]);
 
-  const homeDayLabel = (value) => {
-    const v = value == null ? '' : String(value);
-    const map = {
-      '1': 'Mon',
-      '2': 'Tue',
-      '3': 'Wed',
-      '4': 'Thu',
-      '5': 'Fri',
-    };
-    return map[v] || '-';
+  const homeDaysLabel = (team) => {
+    const days = Array.isArray(team?.home_days) && team.home_days.length > 0
+      ? team.home_days
+      : (team?.home_day != null ? [team.home_day] : []);
+    if (days.length === 0) return 'Any weekday';
+    return days
+      .map((d) => WEEKDAYS.find((w) => w.value === Number(d))?.label || d)
+      .join(', ');
   };
 
   const resetTeamForm = () => {
@@ -182,8 +196,8 @@ const Teams = () => {
     setTeamName('');
     setContactName('');
     setContactPhone('');
-    setClubAddress('');
-    setHomeDay('');
+    setClubId('');
+    setHomeDays([]);
     setMainIds(['', '', '']);
     setSubIds(Array(SUB_COUNT).fill(''));
   };
@@ -222,8 +236,8 @@ const Teams = () => {
           name: teamName.trim(),
           contact_name: contactName,
           contact_phone: contactPhone,
-          club_address: clubAddress,
-          home_day: homeDay === '' ? null : Number(homeDay),
+          club_id: clubId || null,
+          home_days: homeDays,
         });
         await saveRoster(selectedTeamId);
       } else {
@@ -231,8 +245,8 @@ const Teams = () => {
           name: teamName.trim(),
           contact_name: contactName,
           contact_phone: contactPhone,
-          club_address: clubAddress,
-          home_day: homeDay === '' ? null : Number(homeDay),
+          club_id: clubId || null,
+          home_days: homeDays,
         });
       }
       await fetchData();
@@ -272,8 +286,12 @@ const Teams = () => {
     setTeamName(team.name || '');
     setContactName(team.contact_name || '');
     setContactPhone(team.contact_phone || '');
-    setClubAddress(team.club_address || '');
-    setHomeDay(team.home_day == null ? '' : String(team.home_day));
+    setClubId(team.club_id || '');
+    setHomeDays(
+      Array.isArray(team.home_days) && team.home_days.length > 0
+        ? team.home_days.map(Number)
+        : (team.home_day != null ? [Number(team.home_day)] : [])
+    );
     const mains = team.roster.filter((r) => r.slot >= 1 && r.slot <= 3).sort((a, b) => a.slot - b.slot);
     const subs = team.roster.filter((r) => r.slot >= 4 && r.slot <= 13).sort((a, b) => a.slot - b.slot);
     setMainIds([mains[0]?.player_id || '', mains[1]?.player_id || '', mains[2]?.player_id || '']);
@@ -323,13 +341,15 @@ const Teams = () => {
                 placeholder="Team name"
                 disabled={!isAdmin}
               />
-              <input
-                className="input md:col-span-2"
-                value={clubAddress}
-                onChange={(e) => setClubAddress(e.target.value)}
-                placeholder="Club address"
-                disabled={!isAdmin}
-              />
+              <div className="md:col-span-2">
+                <SearchableSelect
+                  options={clubOptions}
+                  value={clubId}
+                  disabled={!isAdmin}
+                  placeholder="Select club"
+                  onChange={(nextValue) => setClubId(nextValue)}
+                />
+              </div>
               <input
                 className="input"
                 value={contactName}
@@ -344,14 +364,37 @@ const Teams = () => {
                 placeholder="Contact phone"
                 disabled={!isAdmin}
               />
-              <select className="input" value={homeDay} onChange={(e) => setHomeDay(e.target.value)} disabled={!isAdmin}>
-                <option value="">Home day</option>
-                <option value="1">Monday</option>
-                <option value="2">Tuesday</option>
-                <option value="3">Wednesday</option>
-                <option value="4">Thursday</option>
-                <option value="5">Friday</option>
-              </select>
+              <div className="md:col-span-2">
+                <div className="text-sm font-medium text-gray-700 mb-1">
+                  Home days <span className="text-xs font-normal text-gray-500">(none selected = any weekday)</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {WEEKDAYS.map((day) => {
+                    const checked = homeDays.includes(day.value);
+                    return (
+                      <label
+                        key={day.value}
+                        className={`px-3 py-1.5 rounded border text-sm select-none ${checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'} ${isAdmin ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={checked}
+                          disabled={!isAdmin}
+                          onChange={(e) => {
+                            setHomeDays((prev) =>
+                              e.target.checked
+                                ? [...prev, day.value].sort((a, b) => a - b)
+                                : prev.filter((v) => v !== day.value)
+                            );
+                          }}
+                        />
+                        {day.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {selectedTeamId ? (
@@ -454,11 +497,13 @@ const Teams = () => {
                       {t.contact_name ? t.contact_name : ''}{t.contact_name && t.contact_phone ? ' · ' : ''}{t.contact_phone ? t.contact_phone : ''}
                     </div>
                   )}
-                  {t.club_address && (
-                    <div className="text-xs text-gray-500 mt-1">Club: {t.club_address}</div>
+                  {t.club_name && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Club: {t.club_name}{t.club_address ? ` — ${t.club_address}` : ''}
+                    </div>
                   )}
                   <div className="text-xs text-gray-500 mt-1">Roster: {t.roster?.length || 0}</div>
-                  <div className="text-xs text-gray-500 mt-1">Home day: {homeDayLabel(t.home_day)}</div>
+                  <div className="text-xs text-gray-500 mt-1">Home days: {homeDaysLabel(t)}</div>
                 </button>
                 {isAdmin && (
                   <button className="btn btn-danger ml-3" onClick={() => onDeleteTeam(t)}>

@@ -229,6 +229,10 @@ async function populateRealData(db, { seasonName = null } = {}) {
       }
     }
 
+    // Assign the inserted teams to clubs by shared venue address.
+    await db.ensureClubsBackfill();
+    await db.ensureTeamHomeDaysBackfill();
+
     await db.run('COMMIT');
   } catch (e) {
     try {

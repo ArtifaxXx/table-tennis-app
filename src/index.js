@@ -13,6 +13,7 @@ const PlayerManager = require('./models/player');
 const MatchManager = require('./models/match');
 const LeagueManager = require('./models/league');
 const TeamManager = require('./models/team');
+const ClubManager = require('./models/club');
 const NewsManager = require('./models/news');
 const FixtureManager = require('./models/fixture');
 const TeamLeagueManager = require('./models/teamLeague');
@@ -164,6 +165,7 @@ const playerManager = new PlayerManager(db);
 const matchManager = new MatchManager(db);
 const leagueManager = new LeagueManager(db);
 const teamManager = new TeamManager(db);
+const clubManager = new ClubManager(db);
 const newsManager = new NewsManager(db);
 const fixtureManager = new FixtureManager(db);
 const teamLeagueManager = new TeamLeagueManager(db);
@@ -888,6 +890,50 @@ app.delete('/api/team-seasons/:id', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/clubs', async (req, res) => {
+  try {
+    const includeInactive = req.query && (req.query.includeInactive === '1' || req.query.includeInactive === 'true');
+    res.json(await clubManager.getAllClubs({ includeInactive }));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clubs/:id', async (req, res) => {
+  try {
+    const club = await clubManager.getClubById(req.params.id);
+    if (!club) return res.status(404).json({ error: 'Club not found' });
+    res.json(club);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/clubs', requireEditor, async (req, res) => {
+  try {
+    res.status(201).json(await clubManager.createClub(req.body));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/clubs/:id', requireEditor, async (req, res) => {
+  try {
+    res.json(await clubManager.updateClub(req.params.id, req.body));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/clubs/:id', requireEditor, async (req, res) => {
+  try {
+    await clubManager.deleteClub(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/teams', async (req, res) => {
   try {
     const includeInactive = req.query && (req.query.includeInactive === '1' || req.query.includeInactive === 'true');
@@ -1105,7 +1151,20 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
       warnings.push('No divisions configured for this season.');
     }
 
+    const allowedDates = (scheduleStartDate && scheduleEndDate)
+      ? FixtureManager.buildAllowedDatesUtc({
+          scheduleStart: new Date(scheduleStartDate),
+          scheduleEnd: new Date(scheduleEndDate),
+        })
+      : [];
+    const datesByWeekday = new Map();
+    for (const d of allowedDates) {
+      const w = FixtureManager.weekdayIso1to7Utc(d);
+      datesByWeekday.set(w, (datesByWeekday.get(w) || 0) + 1);
+    }
+
     const perDivision = [];
+    const clubLoads = new Map();
     let totalFixtures = 0;
     let totalCupFixtures = 0;
 
@@ -1114,18 +1173,43 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
       const assignedIds = Array.isArray(teamIds) ? teamIds : [];
       const activeTeams = assignedIds.length > 0
         ? await db.all(
-            `SELECT id, name, home_day FROM teams
-             WHERE active = 1 AND id IN (${assignedIds.map(() => '?').join(',')})`,
+            `SELECT t.id, t.name, t.club_id, c.name AS club_name, c.simultaneous_fixtures AS club_capacity
+             FROM teams t
+             LEFT JOIN clubs c ON c.id = t.club_id
+             WHERE t.active = 1 AND t.id IN (${assignedIds.map(() => '?').join(',')})`,
             assignedIds
           )
         : [];
+      for (const team of activeTeams) {
+        team.home_days = (await db.all(
+          'SELECT weekday FROM team_home_days WHERE team_id = ? ORDER BY weekday',
+          [team.id]
+        )).map((row) => row.weekday);
+      }
       const teamCount = activeTeams.length;
       if (teamCount !== assignedIds.length) {
         warnings.push(`Division "${d.name}" contains inactive or missing teams.`);
       }
-      const missingHomeDays = activeTeams.filter((team) => team.home_day == null).map((team) => team.name);
-      if (missingHomeDays.length > 0) {
-        warnings.push(`Division "${d.name}" has teams without home days; their home fixtures will be left unscheduled: ${missingHomeDays.join(', ')}.`);
+
+      if (allowedDates.length > 0) {
+        const homeLeagueNeeded = Math.max(0, teamCount - 1);
+        for (const team of activeTeams) {
+          const eligibleDates = team.home_days.length > 0
+            ? team.home_days.reduce((sum, wd) => sum + (datesByWeekday.get(wd) || 0), 0)
+            : allowedDates.length;
+          if (eligibleDates < homeLeagueNeeded) {
+            warnings.push(`Team "${team.name}" has ${eligibleDates} eligible home date(s) but needs ${homeLeagueNeeded} home league fixture(s); some fixtures will be left unscheduled.`);
+          }
+          if (team.club_id) {
+            const load = clubLoads.get(team.club_id) || {
+              name: team.club_name || 'Unknown club',
+              capacity: team.club_capacity || 1,
+              needed: 0,
+            };
+            load.needed += homeLeagueNeeded;
+            clubLoads.set(team.club_id, load);
+          }
+        }
       }
 
       // Double round robin: each pair plays twice => n*(n-1)
@@ -1145,6 +1229,15 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
         cup_fixture_count: cupFixtureCount,
         total_fixture_count: fixtureCount + cupFixtureCount,
       });
+    }
+
+    if (allowedDates.length > 0) {
+      for (const load of clubLoads.values()) {
+        const hostable = load.capacity * allowedDates.length;
+        if (load.needed > hostable) {
+          warnings.push(`Club "${load.name}" can host at most ${load.capacity} fixture(s) per day (${hostable} over the schedule) but its teams need ${load.needed} home league fixtures; some fixtures will be left unscheduled.`);
+        }
+      }
     }
 
     if (totalFixtures === 0) {
@@ -1241,8 +1334,11 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
          COUNT(*) AS total,
          SUM(CASE WHEN match_type = 'league' THEN 1 ELSE 0 END) AS league,
          SUM(CASE WHEN match_type = 'cup' THEN 1 ELSE 0 END) AS cup,
-         SUM(CASE WHEN match_date IS NULL THEN 1 ELSE 0 END) AS unscheduled
-       FROM fixtures WHERE team_season_id = ?`,
+         SUM(CASE WHEN match_date IS NULL THEN 1 ELSE 0 END) AS unscheduled,
+         SUM(CASE WHEN match_date IS NULL AND EXISTS (
+           SELECT 1 FROM team_home_days thd WHERE thd.team_id = f.home_team_id
+         ) THEN 1 ELSE 0 END) AS unscheduled_with_days
+       FROM fixtures f WHERE team_season_id = ?`,
       [team_season_id]
     );
     await logActivity({
@@ -1257,6 +1353,7 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
         cupFixtures: counts?.cup || 0,
         totalFixtures: counts?.total || 0,
         unscheduledFixtures: counts?.unscheduled || 0,
+        unscheduledWithTeamDays: counts?.unscheduled_with_days || 0,
       },
       req,
     });

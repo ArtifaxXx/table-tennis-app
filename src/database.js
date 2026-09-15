@@ -189,6 +189,48 @@ class Database {
     );
   }
 
+  async ensureTeamsClubColumn() {
+    const columns = await this.all('PRAGMA table_info(teams)');
+    if (!columns.some((column) => column.name === 'club_id')) {
+      await this.run('ALTER TABLE teams ADD COLUMN club_id TEXT REFERENCES clubs(id)');
+    }
+  }
+
+  async ensureClubsBackfill() {
+    const groups = await this.all(
+      `SELECT club_address AS address, MIN(name) AS team_name
+       FROM teams
+       WHERE club_id IS NULL AND club_address IS NOT NULL AND TRIM(club_address) <> ''
+       GROUP BY club_address`
+    );
+    for (const group of groups) {
+      let club = await this.get('SELECT id FROM clubs WHERE address = ?', [group.address]);
+      if (!club) {
+        const baseName = String(group.team_name || 'Club').trim().split(/\s+/)[0];
+        let name = baseName;
+        let suffix = 2;
+        while (await this.get('SELECT id FROM clubs WHERE lower(name) = lower(?)', [name])) {
+          name = `${baseName} ${suffix}`;
+          suffix++;
+        }
+        const id = uuidv4();
+        await this.run(
+          'INSERT INTO clubs (id, name, address, simultaneous_fixtures) VALUES (?, ?, ?, 1)',
+          [id, name, group.address]
+        );
+        club = { id };
+      }
+      await this.run('UPDATE teams SET club_id = ? WHERE club_id IS NULL AND club_address = ?', [club.id, group.address]);
+    }
+  }
+
+  async ensureTeamHomeDaysBackfill() {
+    await this.run(
+      `INSERT OR IGNORE INTO team_home_days (team_id, weekday)
+       SELECT id, home_day FROM teams WHERE home_day BETWEEN 1 AND 5`
+    );
+  }
+
   async ensureTeamsHomeDayColumn() {
     const columns = await this.all('PRAGMA table_info(teams)');
     const columnNames = new Set(columns.map((c) => c.name));
@@ -328,16 +370,36 @@ class Database {
         UNIQUE (team_season_id, name)
       )`,
 
+      `CREATE TABLE IF NOT EXISTS clubs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        address TEXT,
+        simultaneous_fixtures INTEGER NOT NULL DEFAULT 1 CHECK(simultaneous_fixtures BETWEEN 1 AND 3),
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+
       `CREATE TABLE IF NOT EXISTS teams (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         contact_name TEXT,
         contact_phone TEXT,
+        club_id TEXT,
         club_address TEXT,
         home_day INTEGER,
         active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (club_id) REFERENCES clubs (id)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS team_home_days (
+        team_id TEXT NOT NULL,
+        weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 5),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (team_id, weekday),
+        FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE
       )`,
 
       `CREATE TABLE IF NOT EXISTS team_roster (
@@ -518,6 +580,9 @@ class Database {
     // Ensure teams.club_address exists and backfill known club addresses.
     await this.ensureTeamsClubAddressColumn();
     await this.ensureTeamsClubAddressBackfill();
+    await this.ensureTeamsClubColumn();
+    await this.ensureClubsBackfill();
+    await this.ensureTeamHomeDaysBackfill();
 
     // Ensure fixtures.team_season_id exists for older databases.
     await this.ensureFixturesSeasonColumn();

@@ -5,96 +5,145 @@ class TeamManager {
     this.db = database;
   }
 
-  normalizeHomeDay(value) {
-    if (value == null || value === '') return null;
-    const n = Number(value);
-    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 5) {
-      throw new Error('home_day must be a weekday number 1-5 (Mon-Fri) or null');
+  normalizeHomeDays(homeDays, legacyHomeDay) {
+    const values = homeDays === undefined
+      ? (legacyHomeDay == null || legacyHomeDay === '' ? [] : [legacyHomeDay])
+      : homeDays;
+    if (!Array.isArray(values)) throw new Error('home_days must be an array');
+    const normalized = Array.from(new Set(values.map(Number))).sort((a, b) => a - b);
+    if (normalized.some((day) => !Number.isInteger(day) || day < 1 || day > 5)) {
+      throw new Error('home_days may only contain weekday numbers 1-5');
     }
-    return n;
+    return normalized;
+  }
+
+  async resolveClub(clubId, teamName, legacyAddress) {
+    if (clubId) {
+      const club = await this.db.get('SELECT * FROM clubs WHERE id = ? AND active = 1', [clubId]);
+      if (!club) throw new Error('Club not found or inactive');
+      return club;
+    }
+    if (legacyAddress) {
+      let club = await this.db.get('SELECT * FROM clubs WHERE address = ? AND active = 1', [legacyAddress]);
+      if (!club) {
+        const id = uuidv4();
+        const name = String(teamName || 'Club').trim().split(/\s+/)[0];
+        await this.db.run(
+          'INSERT INTO clubs (id, name, address, simultaneous_fixtures) VALUES (?, ?, ?, 1)',
+          [id, name, legacyAddress]
+        );
+        club = await this.db.get('SELECT * FROM clubs WHERE id = ?', [id]);
+      }
+      return club;
+    }
+    let club = await this.db.get("SELECT * FROM clubs WHERE name = 'Unassigned' AND active = 1");
+    if (!club) {
+      const id = uuidv4();
+      await this.db.run(
+        'INSERT INTO clubs (id, name, simultaneous_fixtures) VALUES (?, ?, 1)',
+        [id, 'Unassigned']
+      );
+      club = await this.db.get('SELECT * FROM clubs WHERE id = ?', [id]);
+    }
+    return club;
+  }
+
+  async setHomeDays(teamId, homeDays) {
+    await this.db.run('DELETE FROM team_home_days WHERE team_id = ?', [teamId]);
+    for (const weekday of homeDays) {
+      await this.db.run('INSERT INTO team_home_days (team_id, weekday) VALUES (?, ?)', [teamId, weekday]);
+    }
+    await this.db.run('UPDATE teams SET home_day = ? WHERE id = ?', [homeDays[0] || null, teamId]);
+  }
+
+  async attachTeamDetails(team) {
+    if (!team) return null;
+    team.home_days = (await this.db.all(
+      'SELECT weekday FROM team_home_days WHERE team_id = ? ORDER BY weekday',
+      [team.id]
+    )).map((row) => row.weekday);
+    team.home_day = team.home_days[0] || null;
+    team.roster = await this.getTeamRoster(team.id);
+    return team;
   }
 
   async createTeam(teamData) {
-    const { name, contact_name, contact_phone, home_day, club_address } = teamData;
-
-    if (!name) {
-      throw new Error('Team name is required');
-    }
-
+    const { name, contact_name, contact_phone, club_id, club_address } = teamData;
+    if (!name) throw new Error('Team name is required');
+    const homeDays = this.normalizeHomeDays(teamData.home_days, teamData.home_day);
+    const club = await this.resolveClub(club_id, name, club_address);
     const id = uuidv4();
-    await this.db.run(
-      'INSERT INTO teams (id, name, contact_name, contact_phone, home_day, club_address) VALUES (?, ?, ?, ?, ?, ?)',
-      [
-        id,
-        name,
-        contact_name || null,
-        contact_phone || null,
-        this.normalizeHomeDay(home_day),
-        club_address || null,
-      ]
-    );
-
+    await this.db.run('BEGIN TRANSACTION');
+    try {
+      await this.db.run(
+        `INSERT INTO teams (id, name, contact_name, contact_phone, club_id, club_address, home_day)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, name, contact_name || null, contact_phone || null, club.id, club.address || null, homeDays[0] || null]
+      );
+      await this.setHomeDays(id, homeDays);
+      await this.db.run('COMMIT');
+    } catch (error) {
+      await this.db.run('ROLLBACK');
+      throw error;
+    }
     return this.getTeamById(id);
   }
 
   async getAllTeams(options = {}) {
     const includeInactive = !!options.includeInactive;
-
     const teams = await this.db.all(
-      `SELECT * FROM teams ${includeInactive ? '' : 'WHERE active = 1'} ORDER BY name`,
+      `SELECT t.*, c.name AS club_name, c.address AS club_address,
+              c.simultaneous_fixtures AS club_simultaneous_fixtures
+       FROM teams t
+       LEFT JOIN clubs c ON c.id = t.club_id
+       ${includeInactive ? '' : 'WHERE t.active = 1'}
+       ORDER BY t.name`,
       []
     );
-
-    for (const team of teams) {
-      team.roster = await this.getTeamRoster(team.id);
-    }
-
+    for (const team of teams) await this.attachTeamDetails(team);
     return teams;
   }
 
   async getTeamById(id) {
     const team = await this.db.get(
-      'SELECT * FROM teams WHERE id = ? AND active = 1',
+      `SELECT t.*, c.name AS club_name, c.address AS club_address,
+              c.simultaneous_fixtures AS club_simultaneous_fixtures
+       FROM teams t
+       LEFT JOIN clubs c ON c.id = t.club_id
+       WHERE t.id = ? AND t.active = 1`,
       [id]
     );
-
-    if (!team) return null;
-
-    team.roster = await this.getTeamRoster(id);
-    return team;
+    return this.attachTeamDetails(team);
   }
 
   async updateTeam(id, teamData) {
-    const { name, contact_name, contact_phone, home_day, club_address } = teamData;
+    const existing = await this.db.get('SELECT * FROM teams WHERE id = ? AND active = 1', [id]);
+    if (!existing) throw new Error('Team not found or inactive');
+    const shouldUpdateDays = teamData.home_days !== undefined || teamData.home_day !== undefined;
+    const homeDays = shouldUpdateDays
+      ? this.normalizeHomeDays(teamData.home_days, teamData.home_day)
+      : null;
+    const shouldUpdateClub = teamData.club_id !== undefined || teamData.club_address !== undefined;
+    const club = shouldUpdateClub
+      ? await this.resolveClub(teamData.club_id, teamData.name || existing.name, teamData.club_address)
+      : (existing.club_id ? await this.db.get('SELECT * FROM clubs WHERE id = ?', [existing.club_id]) : null);
 
-    const normalizedHomeDay = home_day === undefined ? undefined : this.normalizeHomeDay(home_day);
-
-    const shouldUpdateHomeDay = normalizedHomeDay !== undefined;
-
-    const result = await this.db.run(
-      `UPDATE teams
-       SET name = COALESCE(?, name),
-           contact_name = COALESCE(?, contact_name),
-           contact_phone = COALESCE(?, contact_phone),
-           club_address = COALESCE(?, club_address),
-           home_day = CASE WHEN ? = 1 THEN ? ELSE home_day END,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND active = 1`,
-      [
-        name,
-        contact_name,
-        contact_phone,
-        club_address,
-        shouldUpdateHomeDay ? 1 : 0,
-        shouldUpdateHomeDay ? normalizedHomeDay : null,
-        id,
-      ]
-    );
-
-    if (result.changes === 0) {
-      throw new Error('Team not found or inactive');
+    await this.db.run('BEGIN TRANSACTION');
+    try {
+      await this.db.run(
+        `UPDATE teams
+         SET name = COALESCE(?, name), contact_name = COALESCE(?, contact_name),
+             contact_phone = COALESCE(?, contact_phone), club_id = ?, club_address = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND active = 1`,
+        [teamData.name, teamData.contact_name, teamData.contact_phone, club?.id || null, club ? (club.address || null) : existing.club_address, id]
+      );
+      if (shouldUpdateDays) await this.setHomeDays(id, homeDays);
+      await this.db.run('COMMIT');
+    } catch (error) {
+      await this.db.run('ROLLBACK');
+      throw error;
     }
-
     return this.getTeamById(id);
   }
 

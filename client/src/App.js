@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import News from './pages/News';
 import Players from './pages/Players';
 import Teams from './pages/Teams';
+import Clubs from './pages/Clubs';
 import Fixtures from './pages/Fixtures';
 import FixtureDetail from './pages/FixtureDetail';
 import TeamStandings from './pages/TeamStandings';
@@ -41,6 +42,7 @@ function App() {
                 <Route path="/news" element={<News />} />
                 <Route path="/players" element={<Players />} />
                 <Route path="/teams" element={<Teams />} />
+                <Route path="/clubs" element={<Clubs />} />
                 <Route path="/fixtures" element={<Fixtures />} />
                 <Route path="/fixtures/:id" element={<FixtureDetail />} />
                 <Route path="/team-standings" element={<TeamStandings />} />
