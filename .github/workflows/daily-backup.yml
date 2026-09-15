@@ -1,0 +1,101 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Download and encrypt database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download database backup
+        env:
+          APP_URL: ${{ vars.BACKUP_APP_URL }}
+          ACCOUNT_NAME: ${{ secrets.BACKUP_ACCOUNT_NAME }}
+          ACCOUNT_PASSWORD: ${{ secrets.BACKUP_ACCOUNT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APP_URL:?BACKUP_APP_URL repository variable is required}"
+          : "${ACCOUNT_NAME:?BACKUP_ACCOUNT_NAME repository secret is required}"
+          : "${ACCOUNT_PASSWORD:?BACKUP_ACCOUNT_PASSWORD repository secret is required}"
+
+          BACKUP_FILE="league-backup-$(date -u +'%Y-%m-%dT%H-%M-%SZ').db"
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            --connect-timeout 30 \
+            --max-time 180 \
+            -H "X-Admin-Name: ${ACCOUNT_NAME}" \
+            -H "X-Admin-Password: ${ACCOUNT_PASSWORD}" \
+            "${APP_URL}/api/admin/database-backup" \
+            --output "${BACKUP_FILE}"
+
+          echo "BACKUP_FILE=${BACKUP_FILE}" >> "${GITHUB_ENV}"
+
+      - name: Validate SQLite backup
+        run: |
+          python - <<'PY'
+          import os
+          import sqlite3
+
+          path = os.environ["BACKUP_FILE"]
+
+          with open(path, "rb") as file:
+              header = file.read(16)
+
+          if header != b"SQLite format 3\x00":
+              raise SystemExit("Downloaded file is not a SQLite database")
+
+          connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+          result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+          connection.close()
+
+          if result != "ok":
+              raise SystemExit(f"SQLite integrity check failed: {result}")
+
+          print("SQLite backup is valid")
+          PY
+
+      - name: Encrypt database backup
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY repository secret is required}"
+
+          openssl enc \
+            -aes-256-cbc \
+            -salt \
+            -pbkdf2 \
+            -iter 200000 \
+            -in "${BACKUP_FILE}" \
+            -out "${BACKUP_FILE}.enc" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          rm -f "${BACKUP_FILE}"
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_id }}
+          path: ${{ env.BACKUP_FILE }}.enc
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
