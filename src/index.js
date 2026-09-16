@@ -25,6 +25,20 @@ const { populateRealData } = require('./realData');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
+
+// Optional canonical-host redirect. Set CANONICAL_HOST (e.g. www.example.com)
+// in Railway variables and point the root A record to Railway to redirect all
+// non-www traffic to the canonical domain.
+const CANONICAL_HOST = process.env.CANONICAL_HOST;
+if (CANONICAL_HOST) {
+  app.use((req, res, next) => {
+    if (req.hostname && req.hostname !== CANONICAL_HOST) {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      return res.redirect(301, `${protocol}://${CANONICAL_HOST}${req.originalUrl}`);
+    }
+    next();
+  });
+}
 let isSeeding = false;
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // name + password pair -> canonical admin name (or null for invalid credentials)
