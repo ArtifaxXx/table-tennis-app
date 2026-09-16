@@ -32,6 +32,7 @@ const PORT = process.env.PORT || 3001;
 const CANONICAL_HOST = process.env.CANONICAL_HOST;
 if (CANONICAL_HOST) {
   app.use((req, res, next) => {
+    if (req.path && req.path.startsWith('/api/')) return next();
     if (req.hostname && req.hostname !== CANONICAL_HOST) {
       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
       return res.redirect(301, `${protocol}://${CANONICAL_HOST}${req.originalUrl}`);
