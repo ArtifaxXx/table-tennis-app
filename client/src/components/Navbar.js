@@ -326,7 +326,7 @@ const Navbar = () => {
                 className="btn btn-danger"
                 onClick={() => setDisclaimerOpen(true)}
               >
-                Prototype Disclaimer
+                Release soon
               </button>
             </div>
 
@@ -781,7 +781,7 @@ const Navbar = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">Prototype Disclaimer</h2>
+              <h2 className="text-lg font-semibold text-gray-800">Release soon</h2>
               <button
                 type="button"
                 className="text-gray-500 hover:text-gray-700"
@@ -793,19 +793,17 @@ const Navbar = () => {
 
             <div className="space-y-4 text-sm text-gray-800">
               <div>
-                This is just a prototype that is actively developped and on a free hosting for now
+                Application is nearing release and will be used for Season 2026/2027 management. Data will be wiped on the season start.
               </div>
               <div>
                 To get admin rights click the profile icon at the top right and sign in with your admin name and password.
-              </div>
-              <div>
-                To get more real data with current Prem division state - click <span className="font-semibold">"Restore Premiere snapshot"</span>
               </div>
               <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-gray-800">Implemented features</summary>
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
                   <li>Dashboard metrics, upcoming fixtures, recent results, and top team/player highlights.</li>
-                  <li>Teams management with contact/home-day details, club addresses, roster slots, search, and admin-only edits.</li>
+                  <li>Clubs management with venue addresses and per-day fixture capacity limits.</li>
+                  <li>Teams management with contact details, club assignment, multiple home days, roster slots, search, and admin-only edits.</li>
                   <li>Players management with search, admin-only edits, and read-only detail views for viewers.</li>
                   <li>Season fixtures list with sorting, team filter, and calendar/unscheduled views.</li>
                   <li>Fixture detail editing: lineups, games, auto-filled opposing scores, and completeness validation badges.</li>
