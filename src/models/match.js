@@ -83,35 +83,44 @@ class MatchManager {
 
   async updateMatch(id, matchData) {
     const { player1_score, player2_score, match_date, status } = matchData;
-    
+
+    const existing = await this.db.get('SELECT player1_id, player2_id FROM matches WHERE id = ?', [id]);
+    if (!existing) throw new Error('Match not found');
+
+    const scoresProvided = player1_score !== undefined && player2_score !== undefined;
     let winner_id = null;
-    
-    // If scores are being updated, determine winner
-    if (player1_score !== undefined && player2_score !== undefined) {
-      if (player1_score > player2_score) {
-        winner_id = (await this.db.get('SELECT player1_id FROM matches WHERE id = ?', [id])).player1_id;
-      } else if (player2_score > player1_score) {
-        winner_id = (await this.db.get('SELECT player2_id FROM matches WHERE id = ?', [id])).player2_id;
+
+    if (scoresProvided) {
+      const s1 = Number(player1_score);
+      const s2 = Number(player2_score);
+      if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
+        throw new Error('Scores must be numbers');
       }
+      if (s1 > s2) {
+        winner_id = existing.player1_id;
+      } else if (s2 > s1) {
+        winner_id = existing.player2_id;
+      }
+      // A draw (or unscored) update must clear any previously stored winner.
     }
 
     const sql = `
-      UPDATE matches 
+      UPDATE matches
       SET player1_score = COALESCE(?, player1_score),
           player2_score = COALESCE(?, player2_score),
           match_date = COALESCE(?, match_date),
           status = COALESCE(?, status),
-          winner_id = COALESCE(?, winner_id),
+          winner_id = CASE WHEN ? = 1 THEN ? ELSE winner_id END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
-    
-    const result = await this.db.run(sql, [player1_score, player2_score, match_date, status, winner_id, id]);
-    
+
+    const result = await this.db.run(sql, [player1_score, player2_score, match_date, status, scoresProvided ? 1 : 0, winner_id, id]);
+
     if (result.changes === 0) {
       throw new Error('Match not found');
     }
-    
+
     return await this.getMatchById(id);
   }
 
@@ -198,16 +207,24 @@ class MatchManager {
 
   async completeMatch(id, scores) {
     const { player1_score, player2_score } = scores;
-    
+
     if (player1_score === undefined || player2_score === undefined) {
       throw new Error('Both scores are required');
     }
-    
+    const s1 = Number(player1_score);
+    const s2 = Number(player2_score);
+    if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
+      throw new Error('Scores must be numbers');
+    }
+
+    const existing = await this.db.get('SELECT player1_id, player2_id FROM matches WHERE id = ?', [id]);
+    if (!existing) throw new Error('Match not found');
+
     let winner_id = null;
-    if (player1_score > player2_score) {
-      winner_id = (await this.db.get('SELECT player1_id FROM matches WHERE id = ?', [id])).player1_id;
-    } else if (player2_score > player1_score) {
-      winner_id = (await this.db.get('SELECT player2_id FROM matches WHERE id = ?', [id])).player2_id;
+    if (s1 > s2) {
+      winner_id = existing.player1_id;
+    } else if (s2 > s1) {
+      winner_id = existing.player2_id;
     }
     
     const sql = `

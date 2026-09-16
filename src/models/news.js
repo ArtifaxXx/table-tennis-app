@@ -74,18 +74,13 @@ class NewsManager {
   }
 
   async pinNews(id) {
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       await this.db.run('UPDATE news SET pinned = 0');
       const result = await this.db.run('UPDATE news SET pinned = 1 WHERE id = ?', [id]);
       if (result.changes === 0) {
         throw new Error('News entry not found');
       }
-      await this.db.run('COMMIT');
-    } catch (error) {
-      await this.db.run('ROLLBACK');
-      throw error;
-    }
+    });
   }
 
   async unpinNews(id) {

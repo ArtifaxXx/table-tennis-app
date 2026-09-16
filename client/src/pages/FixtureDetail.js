@@ -38,6 +38,7 @@ const FixtureDetail = () => {
   const [awaySelection, setAwaySelection] = useState(['', '', '']);
   const [editedGamesByMatchNumber, setEditedGamesByMatchNumber] = useState({});
   const [forfeitWinner, setForfeitWinner] = useState('home');
+  const [saving, setSaving] = useState(false);
 
   const canEdit = !!isAdmin && fixture?.season_status === 'active' && !fixture?.forfeited;
 
@@ -132,7 +133,8 @@ const FixtureDetail = () => {
   }, [refresh, toast]);
 
   const saveFixture = async () => {
-    if (!canEdit) return;
+    if (!canEdit || saving) return;
+    setSaving(true);
 
     const matches = Array.from({ length: 9 }, (_, i) => i + 1)
       .map((matchNumber) => ({
@@ -155,6 +157,8 @@ const FixtureDetail = () => {
     } catch (e) {
       console.error(e);
       toast.error(e?.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -389,7 +393,11 @@ const FixtureDetail = () => {
             {fixture.forfeited ? (
               <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">Forfeited</span>
             ) : null}
-            {canEdit && <button className="btn btn-success" onClick={saveFixture}>Save</button>}
+            {canEdit && (
+              <button className="btn btn-success" onClick={saveFixture} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            )}
             <Link className="btn btn-secondary" to="/fixtures">Back</Link>
           </div>
         }

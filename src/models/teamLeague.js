@@ -42,7 +42,7 @@ class TeamLeagueManager {
        JOIN teams at ON f.away_team_id = at.id
        WHERE f.status = 'scheduled'
          AND f.match_date IS NOT NULL
-         AND f.match_date >= CURRENT_TIMESTAMP
+         AND datetime(f.match_date) >= datetime('now')
          ${whereSql}
        ORDER BY f.match_date ASC
        LIMIT 5`,
@@ -60,12 +60,10 @@ class TeamLeagueManager {
                 WHEN (
                   (SELECT COUNT(DISTINCT fl.day_rank)
                    FROM fixture_lineups fl
-                   JOIN team_roster tr ON tr.team_id = f.home_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                    WHERE fl.fixture_id = f.id AND fl.side = 'home' AND fl.day_rank IN (1,2,3)) < 3
                   OR
                   (SELECT COUNT(DISTINCT fl.day_rank)
                    FROM fixture_lineups fl
-                   JOIN team_roster tr ON tr.team_id = f.away_team_id AND tr.player_id = fl.player_id AND tr.active = 1
                    WHERE fl.fixture_id = f.id AND fl.side = 'away' AND fl.day_rank IN (1,2,3)) < 3
                 ) THEN 'missing_lineups'
                 WHEN (SELECT COUNT(*) FROM fixture_matches fg WHERE fg.fixture_id = f.id) < 9 THEN 'missing_matches'

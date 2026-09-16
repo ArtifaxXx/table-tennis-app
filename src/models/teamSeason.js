@@ -68,8 +68,7 @@ class TeamSeasonManager {
     const trimmedName = String(name).trim();
     if (!trimmedName) throw new Error('Season name is required');
 
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       await this.db.run(
         `INSERT INTO team_seasons (id, name, status, schedule_start_date, schedule_end_date)
          VALUES (?, ?, 'draft', ?, ?)`,
@@ -137,16 +136,7 @@ class TeamSeasonManager {
           [defaultDivisionId, id]
         );
       }
-
-      await this.db.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.db.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
 
     return this.getSeasonById(id);
   }
@@ -203,25 +193,27 @@ class TeamSeasonManager {
       throw new Error('Season must be ready (fixtures generated) before starting');
     }
 
-    // Only one active season at a time
-    await this.db.run(
-      `UPDATE team_seasons
-       SET status = 'concluded',
-           end_date = COALESCE(end_date, CURRENT_TIMESTAMP),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE status = 'active' AND id != ?`,
-      [id]
-    );
+    // Only one active season at a time; both writes must succeed together.
+    await this.db.transaction(async () => {
+      await this.db.run(
+        `UPDATE team_seasons
+         SET status = 'concluded',
+             end_date = COALESCE(end_date, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE status = 'active' AND id != ?`,
+        [id]
+      );
 
-    await this.db.run(
-      `UPDATE team_seasons
-       SET status = 'active',
-           start_date = COALESCE(start_date, CURRENT_TIMESTAMP),
-           end_date = NULL,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [id]
-    );
+      await this.db.run(
+        `UPDATE team_seasons
+         SET status = 'active',
+             start_date = COALESCE(start_date, CURRENT_TIMESTAMP),
+             end_date = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [id]
+      );
+    });
 
     return this.getSeasonById(id);
   }
@@ -254,8 +246,7 @@ class TeamSeasonManager {
       throw new Error('Cannot delete the active season. Finish it first.');
     }
 
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       await this.db.run(
         `DELETE FROM fixture_match_games
          WHERE fixture_match_id IN (
@@ -293,16 +284,7 @@ class TeamSeasonManager {
       await this.db.run('DELETE FROM team_season_division_teams WHERE team_season_id = ?', [id]);
       await this.db.run('DELETE FROM team_season_divisions WHERE team_season_id = ?', [id]);
       await this.db.run('DELETE FROM team_seasons WHERE id = ?', [id]);
-
-      await this.db.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.db.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
 
     return { deleted: true };
   }

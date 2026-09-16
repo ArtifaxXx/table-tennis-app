@@ -1,11 +1,17 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
-const ToastContext = createContext({
+// Actions (showToast/success/error/warning/removeToast) live in their own
+// context with stable identities: adding or removing a toast must not
+// re-render every consumer. The toast list is separate so only the viewport
+// re-renders when it changes.
+const ToastActionsContext = createContext({
   showToast: () => {},
+  removeToast: () => {},
   success: () => {},
   error: () => {},
   warning: () => {},
 });
+const ToastsContext = createContext([]);
 
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
@@ -31,19 +37,21 @@ export const ToastProvider = ({ children }) => {
     [removeToast]
   );
 
-  const value = useMemo(
-    () => ({
-      toasts,
-      removeToast,
-      showToast,
-      success: (message, options) => showToast('success', message, options),
-      error: (message, options) => showToast('error', message, options),
-      warning: (message, options) => showToast('warning', message, options),
-    }),
-    [removeToast, showToast, toasts]
+  const success = useCallback((message, options) => showToast('success', message, options), [showToast]);
+  const error = useCallback((message, options) => showToast('error', message, options), [showToast]);
+  const warning = useCallback((message, options) => showToast('warning', message, options), [showToast]);
+
+  const actions = useMemo(
+    () => ({ showToast, removeToast, success, error, warning }),
+    [showToast, removeToast, success, error, warning]
   );
 
-  return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
+  return (
+    <ToastActionsContext.Provider value={actions}>
+      <ToastsContext.Provider value={toasts}>{children}</ToastsContext.Provider>
+    </ToastActionsContext.Provider>
+  );
 };
 
-export const useToast = () => useContext(ToastContext);
+export const useToast = () => useContext(ToastActionsContext);
+export const useToasts = () => useContext(ToastsContext);

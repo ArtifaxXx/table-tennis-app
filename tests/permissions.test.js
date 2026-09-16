@@ -37,12 +37,12 @@ describe('steward permissions', () => {
       .post('/api/auth/login')
       .send(STEWARD);
     expect(login.status).toBe(200);
-    expect(login.body).toEqual({ role: 'steward', name: STEWARD.name });
+    expect(login.body).toEqual({ role: 'steward', name: STEWARD.name, id: expect.any(String) });
 
     const role = await request(app)
       .get('/api/auth/role')
       .set(stewardHeaders());
-    expect(role.body).toEqual({ role: 'steward', name: STEWARD.name });
+    expect(role.body).toEqual({ role: 'steward', name: STEWARD.name, id: expect.any(String) });
   });
 
   test('steward can perform ordinary administrative edits', async () => {
@@ -98,15 +98,23 @@ describe('steward permissions', () => {
     expect(updated.body.match_date).toBe(override);
   });
 
-  test('steward cannot read activity logs but can download backups', async () => {
+  test('steward cannot read activity logs or download backups', async () => {
     const logs = await request(app)
       .get('/api/admin/activity-logs')
       .set(stewardHeaders());
     expect(logs.status).toBe(403);
 
+    // The backup includes admin_users password hashes, so it is admin-only.
     const backup = await request(app)
       .get('/api/admin/database-backup')
-      .set(stewardHeaders())
+      .set(stewardHeaders());
+    expect(backup.status).toBe(403);
+  });
+
+  test('admin can download a valid SQLite backup', async () => {
+    const backup = await request(app)
+      .get('/api/admin/database-backup')
+      .set(adminHeaders())
       .buffer(true)
       .parse(binaryParser);
     expect(backup.status).toBe(200);
@@ -184,6 +192,6 @@ describe('steward permissions', () => {
     const role = await request(app)
       .get('/api/auth/role')
       .set(stewardHeaders(nextPassword));
-    expect(role.body).toEqual({ role: 'steward', name: STEWARD.name });
+    expect(role.body).toEqual({ role: 'steward', name: STEWARD.name, id: expect.any(String) });
   });
 });

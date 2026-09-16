@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useSortableData, sortIndicator } from '../hooks/useSortableData';
 import { useDivisionContext } from '../context/DivisionContext';
+import { useToast } from '../context/ToastContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 import DivisionSelector from '../components/DivisionSelector';
@@ -9,8 +10,8 @@ import DivisionSelector from '../components/DivisionSelector';
 const PlayerRankings = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const didInitRef = useRef(false);
-  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
+  const toast = useToast();
+  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId, loading: contextLoading } = useDivisionContext();
 
   const fetchRows = useCallback(async function fetchRows(seasonId, divisionId) {
     try {
@@ -18,23 +19,22 @@ const PlayerRankings = () => {
       setRows(res.data);
     } catch (e) {
       console.error(e);
+      setRows([]);
+      toast.error(e?.response?.data?.error || 'Failed to load player rankings');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    if (selectedSeasonId) {
-      fetchRows(selectedSeasonId, selectedDivisionId);
+    if (contextLoading) return;
+    if (!selectedSeasonId) {
+      setRows([]);
+      setLoading(false);
+      return;
     }
-  }, [fetchRows, selectedSeasonId, selectedDivisionId]);
-
-  useEffect(() => {
-    if (!selectedSeasonId) return;
     fetchRows(selectedSeasonId, selectedDivisionId);
-  }, [fetchRows, selectedSeasonId, selectedDivisionId]);
+  }, [contextLoading, fetchRows, selectedSeasonId, selectedDivisionId]);
 
   const { items: sortedRows, requestSort, sortConfig } = useSortableData(rows, {
     key: 'rank',

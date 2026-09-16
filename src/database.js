@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 
 const TEAM_CLUB_ADDRESSES = {
   'Arklow': "St Mogue's Rural Community Centre, Inch - Y25 RX07",
@@ -44,9 +45,85 @@ class Database {
     this.dbPath = process.env.DB_PATH
       ? path.resolve(process.env.DB_PATH)
       : path.join(__dirname, '../data/league.db');
+    // All statements share a single sqlite3 connection. A FIFO write lock plus
+    // an async-local transaction marker serializes writers so a concurrent
+    // request can neither open a second transaction nor land a stray write
+    // inside another request's transaction (which would silently roll back
+    // with it).
+    this.writeTail = Promise.resolve();
+    this.txnStorage = new AsyncLocalStorage();
+    this.savepointSeq = 0;
+  }
+
+  acquireWriteLock() {
+    const previous = this.writeTail;
+    let release;
+    this.writeTail = new Promise((resolve) => {
+      release = resolve;
+    });
+    return previous.then(() => release);
+  }
+
+  runDirect(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, function (err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({ id: this.lastID, changes: this.changes });
+        }
+      });
+    });
+  }
+
+  // Runs fn inside BEGIN/COMMIT on this connection. Nested calls inside an
+  // active transaction use a SAVEPOINT so a failure rolls back only the inner
+  // block. Concurrent transactions and standalone writes queue on writeTail.
+  async transaction(fn, { immediate = true } = {}) {
+    if (this.txnStorage.getStore()) {
+      const name = `devin_sp_${++this.savepointSeq}`;
+      await this.runDirect(`SAVEPOINT ${name}`);
+      try {
+        const result = await fn();
+        await this.runDirect(`RELEASE ${name}`);
+        return result;
+      } catch (error) {
+        try {
+          await this.runDirect(`ROLLBACK TO ${name}`);
+          await this.runDirect(`RELEASE ${name}`);
+        } catch (rollbackError) {
+          // ignore
+        }
+        throw error;
+      }
+    }
+
+    const release = await this.acquireWriteLock();
+    try {
+      return await this.txnStorage.run(true, async () => {
+        await this.runDirect(immediate ? 'BEGIN IMMEDIATE TRANSACTION' : 'BEGIN TRANSACTION');
+        try {
+          const result = await fn();
+          await this.runDirect('COMMIT');
+          return result;
+        } catch (error) {
+          try {
+            await this.runDirect('ROLLBACK');
+          } catch (rollbackError) {
+            // ignore
+          }
+          throw error;
+        }
+      });
+    } finally {
+      release();
+    }
   }
 
   async ensureDefaultAdminPassword() {
+    // app_settings is kept for future settings, but the admin password is never
+    // persisted in plaintext: it is sourced from ADMIN_PASSWORD (or the legacy
+    // stored value, once) and only ever stored as a scrypt hash in admin_users.
     await this.run(
       `CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
@@ -56,21 +133,15 @@ class Database {
       )`,
       []
     );
-
-    const row = await this.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
-    if (!row || row.value == null) {
-      const initial = process.env.ADMIN_PASSWORD || 'bndttadmin';
-      await this.run(
-        `INSERT INTO app_settings (key, value)
-         VALUES (?, ?)`,
-        ['admin_password', initial]
-      );
-    }
   }
 
   async ensureInitialAdminUser() {
     const row = await this.get('SELECT COUNT(*) AS c FROM admin_users');
-    if (row && row.c > 0) return;
+    if (row && row.c > 0) {
+      // Accounts exist: drop any legacy plaintext password left in app_settings.
+      await this.run("DELETE FROM app_settings WHERE key = 'admin_password'");
+      return;
+    }
 
     const setting = await this.get('SELECT value FROM app_settings WHERE key = ?', ['admin_password']);
     const password = (setting && setting.value) || process.env.ADMIN_PASSWORD || 'bndttadmin';
@@ -80,6 +151,7 @@ class Database {
       'INSERT INTO admin_users (id, name, password_hash, role) VALUES (?, ?, ?, ?)',
       [uuidv4(), 'admin', hash, 'admin']
     );
+    await this.run("DELETE FROM app_settings WHERE key = 'admin_password'");
   }
 
   async ensureAdminUserRoles() {
@@ -94,10 +166,16 @@ class Database {
         "UPDATE admin_users SET role = 'admin', password_hash = ? WHERE lower(name) = 'admin'",
         [hash]
       );
-      await this.run("DELETE FROM admin_users WHERE lower(name) <> 'admin'");
+      const removed = await this.run("DELETE FROM admin_users WHERE lower(name) <> 'admin'");
+      if (removed.changes > 0) {
+        console.warn(`Removed ${removed.changes} legacy admin account(s) during role migration`);
+      }
     } else {
       await this.run("UPDATE admin_users SET role = 'admin' WHERE lower(name) = 'admin'");
-      await this.run("DELETE FROM admin_users WHERE role = 'admin' AND lower(name) <> 'admin'");
+      const removed = await this.run("DELETE FROM admin_users WHERE role = 'admin' AND lower(name) <> 'admin'");
+      if (removed.changes > 0) {
+        console.warn(`Removed ${removed.changes} extra admin account(s); only 'admin' may hold the admin role`);
+      }
     }
 
     const admin = await this.get("SELECT id FROM admin_users WHERE lower(name) = 'admin'");
@@ -125,7 +203,24 @@ class Database {
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_fixtures_unique_pairing
          ON fixtures (team_season_id, division_id, match_type, home_team_id, away_team_id)`
       );
+    } else {
+      console.warn(
+        'Skipping idx_fixtures_unique_pairing: duplicate fixtures exist in this database. ' +
+          'Application-level duplicate checks still apply.'
+      );
     }
+  }
+
+  async ensureIndexes() {
+    await this.run(
+      'CREATE INDEX IF NOT EXISTS idx_cup_matches_fixture ON division_cup_matches (fixture_id)'
+    );
+    await this.run('CREATE INDEX IF NOT EXISTS idx_fixtures_home_team ON fixtures (home_team_id)');
+    await this.run('CREATE INDEX IF NOT EXISTS idx_fixtures_away_team ON fixtures (away_team_id)');
+    await this.run(
+      'CREATE INDEX IF NOT EXISTS idx_division_teams_team ON team_season_division_teams (team_id)'
+    );
+    await this.run('CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs (created_at)');
   }
 
   async ensureFixturesForfeitColumns() {
@@ -285,12 +380,20 @@ class Database {
           reject(err);
         } else {
           console.log('Connected to SQLite database');
-          this.db.run('PRAGMA foreign_keys = ON', (pragmaError) => {
-            if (pragmaError) {
-              reject(pragmaError);
-            } else {
-              this.createTables().then(resolve).catch(reject);
-            }
+          this.db.serialize(() => {
+            this.db.run('PRAGMA foreign_keys = ON', (pragmaError) => {
+              if (pragmaError) {
+                reject(pragmaError);
+                return;
+              }
+              this.db.run('PRAGMA busy_timeout = 5000', (timeoutError) => {
+                if (timeoutError) console.warn('Unable to set busy_timeout:', timeoutError.message);
+                this.db.run('PRAGMA journal_mode = WAL', (walError) => {
+                  if (walError) console.warn('Unable to enable WAL journal mode:', walError.message);
+                  this.createTables().then(resolve).catch(reject);
+                });
+              });
+            });
           });
         }
       });
@@ -614,6 +717,7 @@ class Database {
     await this.ensureActivityLogActorColumn();
 
     await this.ensureDefaultDivisionBackfill();
+    await this.ensureIndexes();
 
     // Ensure app settings exist and default admin password is persisted.
     await this.ensureDefaultAdminPassword();
@@ -690,8 +794,7 @@ class Database {
     const seasons = await this.all('SELECT id FROM team_seasons', []);
     if (!seasons || seasons.length === 0) return;
 
-    await this.run('BEGIN TRANSACTION');
-    try {
+    await this.transaction(async () => {
       for (const s of seasons) {
         const existing = await this.get(
           'SELECT id FROM team_season_divisions WHERE team_season_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT 1',
@@ -715,16 +818,7 @@ class Database {
           [divisionId, s.id]
         );
       }
-
-      await this.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
   }
 
   async ensureTeamsContactColumns() {
@@ -752,8 +846,7 @@ class Database {
     const entries = Object.entries(TEAM_CLUB_ADDRESSES);
     if (entries.length === 0) return;
 
-    await this.run('BEGIN TRANSACTION');
-    try {
+    await this.transaction(async () => {
       for (const [name, address] of entries) {
         await this.run(
           `UPDATE teams
@@ -763,27 +856,19 @@ class Database {
           [address, name]
         );
       }
-      await this.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
   }
 
   run(sql, params = []) {
-    return new Promise((resolve, reject) => {
-      this.db.run(sql, params, function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ id: this.lastID, changes: this.changes });
-        }
-      });
-    });
+    // Inside a transaction the caller already holds the write lock; run
+    // directly so the statement joins the open transaction. Otherwise queue
+    // behind it so the write cannot be absorbed into someone else's txn.
+    if (this.txnStorage.getStore()) {
+      return this.runDirect(sql, params);
+    }
+    return this.acquireWriteLock().then((release) =>
+      this.runDirect(sql, params).finally(release)
+    );
   }
 
   get(sql, params = []) {
@@ -814,10 +899,22 @@ class Database {
     return new Promise((resolve, reject) => {
       const backup = this.db.backup(destination, (initializeError) => {
         if (initializeError) {
+          try {
+            backup.finish();
+          } catch (finishError) {
+            // ignore
+          }
           reject(initializeError);
           return;
         }
         backup.step(-1, (stepError) => {
+          // finish() is required to finalize the destination file and release
+          // the backup handle.
+          try {
+            backup.finish();
+          } catch (finishError) {
+            // ignore
+          }
           if (stepError) {
             reject(stepError);
           } else {
@@ -860,14 +957,16 @@ class Database {
             `SELECT COUNT(*) AS count
              FROM sqlite_master
              WHERE type = 'table'
-               AND name IN ('players', 'teams', 'team_seasons', 'fixtures', 'admin_users', 'activity_logs')`,
+               AND name IN ('players', 'teams', 'fixtures', 'admin_users')`,
             [],
             (schemaError, schema) => {
               if (schemaError) {
                 finish(schemaError);
                 return;
               }
-              if (!schema || schema.count !== 6) {
+              // Only the core tables are required; newer tables may be absent
+              // from backups taken by older app versions.
+              if (!schema || schema.count !== 4) {
                 finish(new Error('File is not a compatible league database backup'));
                 return;
               }

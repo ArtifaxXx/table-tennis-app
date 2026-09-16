@@ -1,4 +1,4 @@
-import { defaultCompare, sortIndicator } from './useSortableData';
+import { defaultCompare, sortIndicator, sortList } from './useSortableData';
 
 const sortStrings = (arr) => [...arr].sort(defaultCompare);
 
@@ -52,6 +52,25 @@ describe('defaultCompare', () => {
     expect(defaultCompare(5, 'abc')).toBe('5'.localeCompare('abc', undefined, { numeric: true, sensitivity: 'base' }));
     expect(defaultCompare('abc', 'abc')).toBe(0);
     expect(defaultCompare(5, 5)).toBe(0);
+  });
+});
+
+describe('sortList', () => {
+  test('null values sort last in both directions', () => {
+    const rows = [{ v: null }, { v: 5 }, { v: 1 }, { v: 3 }];
+
+    const asc = sortList(rows, { key: 'v', direction: 'asc' });
+    expect(asc.map((r) => r.v)).toEqual([1, 3, 5, null]);
+
+    const desc = sortList(rows, { key: 'v', direction: 'desc' });
+    expect(desc.map((r) => r.v)).toEqual([5, 3, 1, null]);
+  });
+
+  test('returns a copy and leaves unsorted input alone without a key', () => {
+    const rows = [{ v: 2 }, { v: 1 }];
+    const same = sortList(rows, null);
+    expect(same.map((r) => r.v)).toEqual([2, 1]);
+    expect(same).not.toBe(rows);
   });
 });
 

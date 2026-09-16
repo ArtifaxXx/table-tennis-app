@@ -12,7 +12,7 @@ const Navbar = () => {
   const location = useLocation();
   const auth = useAuth();
   const toast = useToast();
-  const [role, setRole] = useState('viewer');
+  const role = auth.role;
   const [authOpen, setAuthOpen] = useState(false);
   const [authTab, setAuthTab] = useState('account');
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
@@ -105,23 +105,15 @@ const Navbar = () => {
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   const refreshRole = async () => {
-    try {
-      const r = await axios.get('/api/auth/role');
-      const nextRole = ['admin', 'steward'].includes(r?.data?.role) ? r.data.role : 'viewer';
-      setRole(nextRole);
-      await auth.refreshRole();
-      if (nextRole === 'viewer') {
-        try {
-          if (window.localStorage.getItem(ADMIN_PASSWORD_KEY)) {
-            window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
-          }
-        } catch (e) {
-          // ignore
+    const identity = await auth.refreshRole();
+    if (identity.role === 'viewer') {
+      try {
+        if (window.localStorage.getItem(ADMIN_PASSWORD_KEY)) {
+          window.localStorage.removeItem(ADMIN_PASSWORD_KEY);
         }
+      } catch (e) {
+        // ignore
       }
-    } catch (e) {
-      setRole('viewer');
-      await auth.refreshRole();
     }
   };
 
@@ -499,7 +491,7 @@ const Navbar = () => {
                                 type="button"
                                 className="btn btn-danger"
                                 onClick={() => setConfirmDeleteId(user.id)}
-                                disabled={authLoading || user.name === getStoredAdminName()}
+                                disabled={authLoading || user.id === auth.actorId || user.name === getStoredAdminName()}
                               >
                                 Remove
                               </button>
@@ -741,7 +733,13 @@ const Navbar = () => {
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!authLoading && passwordInput && nameInput.trim()) enableAdmin();
+                }}
+              >
                 <div className="text-sm text-gray-700">Sign in with your admin or steward name and password to enable editing. Your actions are recorded in the activity log.</div>
                 <input
                   className="input w-full"
@@ -750,6 +748,7 @@ const Navbar = () => {
                   onChange={(e) => setNameInput(e.target.value)}
                   placeholder="Account name"
                   autoFocus
+                  autoComplete="username"
                 />
                 <input
                   className="input w-full"
@@ -757,6 +756,7 @@ const Navbar = () => {
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   placeholder="Password"
+                  autoComplete="current-password"
                 />
                 <div className="flex justify-end gap-2">
                   <button className="btn" type="button" onClick={closeAuth} disabled={authLoading}>
@@ -764,14 +764,13 @@ const Navbar = () => {
                   </button>
                   <button
                     className="btn btn-primary"
-                    type="button"
-                    onClick={enableAdmin}
+                    type="submit"
                     disabled={authLoading || !passwordInput || !nameInput.trim()}
                   >
-                    Sign In
+                    {authLoading ? 'Signing in...' : 'Sign In'}
                   </button>
                 </div>
-              </div>
+              </form>
             )}
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useToast } from '../context/ToastContext';
+import { useToast, useToasts } from '../context/ToastContext';
 
 const typeStyles = {
   success: 'bg-green-600 text-white',
@@ -8,12 +8,17 @@ const typeStyles = {
 };
 
 const ToastViewport = () => {
-  const { toasts, removeToast } = useToast();
+  const toasts = useToasts();
+  const { removeToast } = useToast();
 
   if (!toasts || toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg space-y-2">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg space-y-2"
+    >
       {toasts.map((t) => (
         <button
           key={t.id}

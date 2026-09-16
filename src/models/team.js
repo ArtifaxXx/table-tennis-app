@@ -27,7 +27,13 @@ class TeamManager {
       let club = await this.db.get('SELECT * FROM clubs WHERE address = ? AND active = 1', [legacyAddress]);
       if (!club) {
         const id = uuidv4();
-        const name = String(teamName || 'Club').trim().split(/\s+/)[0];
+        const baseName = String(teamName || 'Club').trim().split(/\s+/)[0];
+        let name = baseName;
+        let suffix = 2;
+        while (await this.db.get('SELECT id FROM clubs WHERE lower(name) = lower(?)', [name])) {
+          name = `${baseName} ${suffix}`;
+          suffix++;
+        }
         await this.db.run(
           'INSERT INTO clubs (id, name, address, simultaneous_fixtures) VALUES (?, ?, ?, 1)',
           [id, name, legacyAddress]
@@ -36,7 +42,11 @@ class TeamManager {
       }
       return club;
     }
-    let club = await this.db.get("SELECT * FROM clubs WHERE name = 'Unassigned' AND active = 1");
+    let club = await this.db.get("SELECT * FROM clubs WHERE name = 'Unassigned'");
+    if (club && !club.active) {
+      await this.db.run('UPDATE clubs SET active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [club.id]);
+      club = await this.db.get('SELECT * FROM clubs WHERE id = ?', [club.id]);
+    }
     if (!club) {
       const id = uuidv4();
       await this.db.run(
@@ -69,23 +79,19 @@ class TeamManager {
 
   async createTeam(teamData) {
     const { name, contact_name, contact_phone, club_id, club_address } = teamData;
-    if (!name) throw new Error('Team name is required');
+    if (!name || !String(name).trim()) throw new Error('Team name is required');
+    const trimmedName = String(name).trim();
     const homeDays = this.normalizeHomeDays(teamData.home_days, teamData.home_day);
-    const club = await this.resolveClub(club_id, name, club_address);
     const id = uuidv4();
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
+      const club = await this.resolveClub(club_id, trimmedName, club_address);
       await this.db.run(
         `INSERT INTO teams (id, name, contact_name, contact_phone, club_id, club_address, home_day)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, name, contact_name || null, contact_phone || null, club.id, club.address || null, homeDays[0] || null]
+        [id, trimmedName, contact_name || null, contact_phone || null, club.id, club.address || null, homeDays[0] || null]
       );
       await this.setHomeDays(id, homeDays);
-      await this.db.run('COMMIT');
-    } catch (error) {
-      await this.db.run('ROLLBACK');
-      throw error;
-    }
+    });
     return this.getTeamById(id);
   }
 
@@ -123,27 +129,24 @@ class TeamManager {
     const homeDays = shouldUpdateDays
       ? this.normalizeHomeDays(teamData.home_days, teamData.home_day)
       : null;
+    const newName = teamData.name !== undefined && teamData.name !== null ? String(teamData.name).trim() : undefined;
+    if (newName !== undefined && !newName) throw new Error('Team name cannot be empty');
     const shouldUpdateClub = teamData.club_id !== undefined || teamData.club_address !== undefined;
     const club = shouldUpdateClub
-      ? await this.resolveClub(teamData.club_id, teamData.name || existing.name, teamData.club_address)
+      ? await this.resolveClub(teamData.club_id, newName || existing.name, teamData.club_address)
       : (existing.club_id ? await this.db.get('SELECT * FROM clubs WHERE id = ?', [existing.club_id]) : null);
 
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       await this.db.run(
         `UPDATE teams
          SET name = COALESCE(?, name), contact_name = COALESCE(?, contact_name),
              contact_phone = COALESCE(?, contact_phone), club_id = ?, club_address = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND active = 1`,
-        [teamData.name, teamData.contact_name, teamData.contact_phone, club?.id || null, club ? (club.address || null) : existing.club_address, id]
+        [newName !== undefined ? newName : null, teamData.contact_name, teamData.contact_phone, club?.id || null, club ? (club.address || null) : existing.club_address, id]
       );
       if (shouldUpdateDays) await this.setHomeDays(id, homeDays);
-      await this.db.run('COMMIT');
-    } catch (error) {
-      await this.db.run('ROLLBACK');
-      throw error;
-    }
+    });
     return this.getTeamById(id);
   }
 
@@ -204,8 +207,7 @@ class TeamManager {
       throw new Error('One or more players not found or inactive');
     }
 
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       // Replace old roster entirely.
       // Note: team_roster has UNIQUE(team_id, player_id) and UNIQUE(team_id, slot)
       // across all rows (active or not), so keeping historical inactive rows would
@@ -228,16 +230,7 @@ class TeamManager {
           [uuidv4(), teamId, item.playerId, item.slot]
         );
       }
-
-      await this.db.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.db.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
 
     return this.getTeamRoster(teamId);
   }

@@ -29,6 +29,52 @@ let isSeeding = false;
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // name + password pair -> canonical admin name (or null for invalid credentials)
 const adminCredentialCache = new Map();
+const ADMIN_CREDENTIAL_CACHE_LIMIT = 500;
+
+function cacheAdminCredential(key, identity) {
+  if (adminCredentialCache.size >= ADMIN_CREDENTIAL_CACHE_LIMIT) {
+    const oldest = adminCredentialCache.keys().next().value;
+    adminCredentialCache.delete(oldest);
+  }
+  adminCredentialCache.set(key, identity);
+}
+
+// Per-IP throttle for failed header-auth attempts. The login limiter only
+// guards /api/auth/login; credentials presented via X-Admin-* headers on other
+// endpoints otherwise get unlimited tries.
+const authFailuresByIp = new Map();
+const AUTH_FAILURE_LIMIT = 20;
+const AUTH_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+
+function isAuthThrottled(ip) {
+  const entry = authFailuresByIp.get(ip);
+  if (!entry) return false;
+  if (Date.now() > entry.resetAt) {
+    authFailuresByIp.delete(ip);
+    return false;
+  }
+  return entry.count >= AUTH_FAILURE_LIMIT;
+}
+
+function recordAuthFailure(ip) {
+  const now = Date.now();
+  let entry = authFailuresByIp.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + AUTH_FAILURE_WINDOW_MS };
+  }
+  entry.count++;
+  authFailuresByIp.set(ip, entry);
+  // Bound the map: sweep expired entries, then evict oldest if still large.
+  if (authFailuresByIp.size > 5000) {
+    for (const [key, value] of authFailuresByIp) {
+      if (now > value.resetAt) authFailuresByIp.delete(key);
+    }
+    while (authFailuresByIp.size > 5000) {
+      authFailuresByIp.delete(authFailuresByIp.keys().next().value);
+    }
+  }
+  return entry.count;
+}
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -91,27 +137,43 @@ app.use(async (req, res, next) => {
   try {
     req.role = 'viewer';
     req.actorName = null;
+    req.actorId = null;
 
     const headerName = req.get('X-Admin-Name');
     const password = req.get('X-Admin-Password');
     const name = headerName ? headerName.trim().slice(0, 60) : '';
     if (!name || !password) return next();
 
+    if (isAuthThrottled(req.ip)) {
+      return res.status(429).json({ error: 'Too many failed authentication attempts, try again later' });
+    }
+
     const cacheKey = JSON.stringify([name, password]);
     let identity = adminCredentialCache.get(cacheKey);
     if (identity === undefined) {
       const user = await db.get(
-        'SELECT name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+        'SELECT id, name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
         [name]
       );
       identity = user && verifyPassword(password, user.password_hash)
-        ? { name: user.name, role: user.role }
+        ? { id: user.id, name: user.name, role: user.role }
         : null;
-      adminCredentialCache.set(cacheKey, identity);
+      cacheAdminCredential(cacheKey, identity);
     }
     if (identity) {
       req.role = identity.role;
       req.actorName = identity.name;
+      req.actorId = identity.id;
+    } else {
+      const attempts = recordAuthFailure(req.ip);
+      console.warn(`Failed admin credential check for "${name}" from ${req.ip} (${attempts}/${AUTH_FAILURE_LIMIT})`);
+      void logActivity({
+        eventType: 'auth',
+        action: 'header_auth_failed',
+        entity: 'auth',
+        details: { name },
+        req,
+      });
     }
     return next();
   } catch (error) {
@@ -120,7 +182,15 @@ app.use(async (req, res, next) => {
 });
 
 app.use(helmet());
-app.use(cors());
+// CORS: same-origin by default (the client is served by this app in production
+// and proxied by the dev server). Set CORS_ORIGIN to a comma-separated
+// allowlist to permit cross-origin browser calls. Header-based credentials
+// would otherwise be usable from any website origin.
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : false }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -254,7 +324,13 @@ function requireEditor(req, res, next) {
 
 function requireSeedToken(req, res, next) {
   const expected = process.env.SEED_TOKEN;
-  if (!expected) return next();
+  if (!expected) {
+    // Fail closed in production; in development the admin check alone is the gate.
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'Seeding is disabled (SEED_TOKEN is not configured)' });
+    }
+    return next();
+  }
 
   const token = req.get('X-Seed-Token');
   if (!token || token !== expected) {
@@ -265,7 +341,7 @@ function requireSeedToken(req, res, next) {
 
 // API Routes
 app.get('/api/auth/role', async (req, res) => {
-  res.json({ role: req.role || 'viewer', name: req.role !== 'viewer' ? req.actorName : null });
+  res.json({ role: req.role || 'viewer', name: req.role !== 'viewer' ? req.actorName : null, id: req.role !== 'viewer' ? req.actorId : null });
 });
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
@@ -274,7 +350,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
     const user = name && password
       ? await db.get(
-          'SELECT name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
+          'SELECT id, name, password_hash, role FROM admin_users WHERE active = 1 AND lower(name) = lower(?)',
           [name]
         )
       : null;
@@ -290,8 +366,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     });
 
     if (!ok) return res.status(401).json({ role: 'viewer' });
-    adminCredentialCache.set(JSON.stringify([name, password]), { name: user.name, role: user.role });
-    return res.json({ role: user.role, name: user.name });
+    cacheAdminCredential(JSON.stringify([name, password]), { id: user.id, name: user.name, role: user.role });
+    return res.json({ role: user.role, name: user.name, id: user.id });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -356,10 +432,17 @@ app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
     );
 
     res.json(
-      rows.map((row) => ({
-        ...row,
-        details: row.details ? JSON.parse(row.details) : null,
-      }))
+      rows.map((row) => {
+        let details = null;
+        if (row.details) {
+          try {
+            details = JSON.parse(row.details);
+          } catch (parseError) {
+            details = { raw: row.details };
+          }
+        }
+        return { ...row, details };
+      })
     );
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -485,7 +568,9 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/database-backup', requireEditor, async (req, res) => {
+// The backup contains every table including admin_users password hashes, so
+// it is admin-only even though other data endpoints allow stewards.
+app.get('/api/admin/database-backup', requireAdmin, async (req, res) => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `league-backup-${timestamp}.db`;
   const backupPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-${filename}`);
@@ -623,9 +708,13 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
     const srcDb = path.join(snapshotDir, 'league.db');
     const srcWal = path.join(snapshotDir, 'league.db-wal');
     const srcShm = path.join(snapshotDir, 'league.db-shm');
-    const destDb = path.join(dataDir, 'league.db');
-    const destWal = path.join(dataDir, 'league.db-wal');
-    const destShm = path.join(dataDir, 'league.db-shm');
+    // Destination is the configured database path, whatever its filename is.
+    const destDb = dbPath;
+    const destWal = `${dbPath}-wal`;
+    const destShm = `${dbPath}-shm`;
+    const rollbackPath = path.join(os.tmpdir(), `${crypto.randomUUID()}-prem-restore-rollback.db`);
+    let databaseClosed = false;
+    let rollbackReady = false;
 
     if (!fs.existsSync(srcDb)) {
       throw new Error(
@@ -635,16 +724,47 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
     }
 
     await db.close();
+    databaseClosed = true;
+    try {
+      fs.copyFileSync(destDb, rollbackPath);
+      rollbackReady = true;
 
-    fs.copyFileSync(srcDb, destDb);
+      if (path.resolve(srcDb) !== path.resolve(destDb)) {
+        fs.copyFileSync(srcDb, destDb);
+      }
 
-    const walCopied = fs.existsSync(srcWal) ? (fs.copyFileSync(srcWal, destWal), true) : false;
-    const shmCopied = fs.existsSync(srcShm) ? (fs.copyFileSync(srcShm, destShm), true) : false;
+      const walCopied = fs.existsSync(srcWal) ? (fs.copyFileSync(srcWal, destWal), true) : false;
+      const shmCopied = fs.existsSync(srcShm) ? (fs.copyFileSync(srcShm, destShm), true) : false;
 
-    if (!walCopied && fs.existsSync(destWal)) fs.rmSync(destWal);
-    if (!shmCopied && fs.existsSync(destShm)) fs.rmSync(destShm);
+      if (!walCopied && fs.existsSync(destWal)) fs.rmSync(destWal);
+      if (!shmCopied && fs.existsSync(destShm)) fs.rmSync(destShm);
 
-    await db.initialize();
+      await db.initialize();
+      databaseClosed = false;
+      adminCredentialCache.clear();
+      fs.rmSync(rollbackPath, { force: true });
+      rollbackReady = false;
+    } catch (restoreError) {
+      if (databaseClosed) {
+        try {
+          if (rollbackReady) fs.copyFileSync(rollbackPath, destDb);
+          if (fs.existsSync(destWal)) fs.rmSync(destWal);
+          if (fs.existsSync(destShm)) fs.rmSync(destShm);
+          await db.initialize();
+          databaseClosed = false;
+        } catch (recoveryError) {
+          console.error('Premier snapshot restore recovery failed:', recoveryError);
+        }
+      }
+      throw restoreError;
+    }
+
+    await logActivity({
+      eventType: 'admin',
+      action: 'restore_prem_snapshot',
+      entity: 'database',
+      req,
+    });
 
     if (preservedNews.length > 0) {
       for (const item of preservedNews) {
@@ -675,7 +795,7 @@ app.post('/api/admin/restore-prem-snapshot', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/populate-real', requireEditor, requireSeedToken, async (req, res) => {
+app.post('/api/admin/populate-real', requireAdmin, requireSeedToken, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
   }
@@ -700,7 +820,7 @@ app.post('/api/admin/populate-real', requireEditor, requireSeedToken, async (req
   }
 });
 
-app.post('/api/admin/seed', requireEditor, requireSeedToken, async (req, res) => {
+app.post('/api/admin/seed', requireAdmin, requireSeedToken, async (req, res) => {
   if (isSeeding) {
     return res.status(409).json({ error: 'Seed already in progress' });
   }
@@ -1259,7 +1379,6 @@ app.post('/api/fixtures/generate-schedule/preview', requireEditor, async (req, r
 });
 
 app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
-  let transactionStarted = false;
   try {
     const team_season_id = (req.body && req.body.team_season_id) ? req.body.team_season_id : null;
     if (!team_season_id) {
@@ -1295,79 +1414,71 @@ app.post('/api/fixtures/generate-schedule', requireEditor, async (req, res) => {
       throw new Error('Fixtures have already been generated for this season');
     }
 
-    await db.run('BEGIN IMMEDIATE TRANSACTION');
-    transactionStarted = true;
-    const allFixtures = [];
-    for (const d of divisions) {
-      const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
-      if (!teamIds || teamIds.length < 2) {
-        continue;
+    const allFixtures = await db.transaction(async () => {
+      const created = [];
+      for (const d of divisions) {
+        const teamIds = await teamSeasonDivisionManager.getTeamIdsForDivision(d.id);
+        if (!teamIds || teamIds.length < 2) {
+          continue;
+        }
+        const fixtures = await fixtureManager.generateDoubleRoundRobinSchedule({
+          ...(req.body || {}),
+          team_season_id,
+          division_id: d.id,
+          teamIds,
+          schedule_start_date: scheduleStartDate,
+          schedule_end_date: scheduleEndDate,
+        });
+        created.push(...fixtures);
+
+        // Also generate a cup draw + fixtures for this division.
+        await fixtureManager.generateDivisionCup({
+          ...(req.body || {}),
+          team_season_id,
+          division_id: d.id,
+          teamIds,
+          schedule_start_date: scheduleStartDate,
+          schedule_end_date: scheduleEndDate,
+        });
       }
-      const fixtures = await fixtureManager.generateDoubleRoundRobinSchedule({
-        ...(req.body || {}),
-        team_season_id,
-        division_id: d.id,
-        teamIds,
-        schedule_start_date: scheduleStartDate,
-        schedule_end_date: scheduleEndDate,
+
+      if (created.length === 0) {
+        throw new Error('No fixtures generated. Ensure each division has at least 2 teams.');
+      }
+
+      await teamSeasonManager.setSeasonReady(team_season_id);
+      const counts = await db.get(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN match_type = 'league' THEN 1 ELSE 0 END) AS league,
+           SUM(CASE WHEN match_type = 'cup' THEN 1 ELSE 0 END) AS cup,
+           SUM(CASE WHEN match_date IS NULL THEN 1 ELSE 0 END) AS unscheduled,
+           SUM(CASE WHEN match_date IS NULL AND EXISTS (
+             SELECT 1 FROM team_home_days thd WHERE thd.team_id = f.home_team_id
+           ) THEN 1 ELSE 0 END) AS unscheduled_with_days
+         FROM fixtures f WHERE team_season_id = ?`,
+        [team_season_id]
+      );
+      await logActivity({
+        eventType: 'edit',
+        action: 'fixture_creation',
+        entity: 'fixtures',
+        entityId: team_season_id,
+        details: {
+          season: season.name,
+          divisions: divisions.length,
+          leagueFixtures: counts?.league || 0,
+          cupFixtures: counts?.cup || 0,
+          totalFixtures: counts?.total || 0,
+          unscheduledFixtures: counts?.unscheduled || 0,
+          unscheduledWithTeamDays: counts?.unscheduled_with_days || 0,
+        },
+        req,
       });
-      allFixtures.push(...fixtures);
-
-      // Also generate a cup draw + fixtures for this division.
-      await fixtureManager.generateDivisionCup({
-        ...(req.body || {}),
-        team_season_id,
-        division_id: d.id,
-        teamIds,
-        schedule_start_date: scheduleStartDate,
-        schedule_end_date: scheduleEndDate,
-      });
-    }
-
-    if (allFixtures.length === 0) {
-      throw new Error('No fixtures generated. Ensure each division has at least 2 teams.');
-    }
-
-    await teamSeasonManager.setSeasonReady(team_season_id);
-    const counts = await db.get(
-      `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN match_type = 'league' THEN 1 ELSE 0 END) AS league,
-         SUM(CASE WHEN match_type = 'cup' THEN 1 ELSE 0 END) AS cup,
-         SUM(CASE WHEN match_date IS NULL THEN 1 ELSE 0 END) AS unscheduled,
-         SUM(CASE WHEN match_date IS NULL AND EXISTS (
-           SELECT 1 FROM team_home_days thd WHERE thd.team_id = f.home_team_id
-         ) THEN 1 ELSE 0 END) AS unscheduled_with_days
-       FROM fixtures f WHERE team_season_id = ?`,
-      [team_season_id]
-    );
-    await logActivity({
-      eventType: 'edit',
-      action: 'fixture_creation',
-      entity: 'fixtures',
-      entityId: team_season_id,
-      details: {
-        season: season.name,
-        divisions: divisions.length,
-        leagueFixtures: counts?.league || 0,
-        cupFixtures: counts?.cup || 0,
-        totalFixtures: counts?.total || 0,
-        unscheduledFixtures: counts?.unscheduled || 0,
-        unscheduledWithTeamDays: counts?.unscheduled_with_days || 0,
-      },
-      req,
+      return created;
     });
-    await db.run('COMMIT');
-    transactionStarted = false;
     res.json(allFixtures);
   } catch (error) {
-    if (transactionStarted) {
-      try {
-        await db.run('ROLLBACK');
-      } catch (rollbackError) {
-        void rollbackError;
-      }
-    }
     res.status(400).json({ error: error.message });
   }
 });
@@ -1553,6 +1664,25 @@ app.get('/api/schedule', requireEditor, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Unknown API routes return a JSON 404 rather than falling through to the
+// React catch-all (which would serve HTML with a 200).
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// Malformed JSON bodies and other middleware errors return a JSON error
+// instead of Express's default HTML error page.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  if (err instanceof SyntaxError) {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+  return res.status(err && err.status ? err.status : 500).json({ error: 'Internal server error' });
 });
 
 // Serve static files from React app (production only)

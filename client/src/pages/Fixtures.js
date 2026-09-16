@@ -23,9 +23,8 @@ const Fixtures = () => {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [editedDatesByFixtureId, setEditedDatesByFixtureId] = useState({});
   const [teamFilter, setTeamFilter] = useState('');
-  const didInitRef = useRef(false);
   const calendarInitRef = useRef(false);
-  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
+  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId, loading: contextLoading } = useDivisionContext();
 
   const toDateLocalValue = (iso) => {
     if (!iso) return '';
@@ -52,23 +51,27 @@ const Fixtures = () => {
       setEditedDatesByFixtureId(nextEdited);
     } catch (e) {
       console.error(e);
+      setFixtures([]);
+      toast.error(e?.response?.data?.error || 'Failed to load fixtures');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    if (selectedSeasonId) {
-      fetchFixtures(selectedSeasonId, selectedDivisionId);
+    if (contextLoading) return;
+    if (!selectedSeasonId) {
+      setFixtures([]);
+      setLoading(false);
+      return;
     }
-  }, [fetchFixtures, selectedSeasonId, selectedDivisionId]);
-
-  useEffect(() => {
-    if (!selectedSeasonId) return;
     fetchFixtures(selectedSeasonId, selectedDivisionId);
-  }, [fetchFixtures, selectedSeasonId, selectedDivisionId]);
+  }, [contextLoading, fetchFixtures, selectedSeasonId, selectedDivisionId]);
+
+  // Re-initialize the calendar month when the season changes.
+  useEffect(() => {
+    calendarInitRef.current = false;
+  }, [selectedSeasonId]);
 
   useEffect(() => {
     if (calendarInitRef.current) return;

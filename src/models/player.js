@@ -7,9 +7,13 @@ class PlayerManager {
 
   async createPlayer(playerData) {
     const { name, email, phone, skill_level = 1 } = playerData;
-    
-    if (!name) {
+
+    if (!name || !String(name).trim()) {
       throw new Error('Player name is required');
+    }
+    const skill = Number(skill_level);
+    if (!Number.isInteger(skill) || skill < 1 || skill > 10) {
+      throw new Error('skill_level must be an integer between 1 and 10');
     }
 
     const id = uuidv4();
@@ -17,27 +21,28 @@ class PlayerManager {
       INSERT INTO players (id, name, email, phone, skill_level)
       VALUES (?, ?, ?, ?, ?)
     `;
-    
-    await this.db.run(sql, [id, name, email, phone, skill_level]);
+
+    await this.db.run(sql, [id, String(name).trim(), email, phone, skill]);
     return await this.getPlayerById(id);
   }
 
   async getAllPlayers() {
+    // f.id IS NOT NULL gates stats to matches in completed fixtures only.
     const sql = `
       SELECT
         p.*,
-        COUNT(fg.id) as total_matches,
+        COUNT(f.id) as total_matches,
         SUM(
           CASE
-            WHEN fg.winner_side = 'home' AND fg.home_player_a_id = p.id THEN 1
-            WHEN fg.winner_side = 'away' AND fg.away_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'home' AND fg.home_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'away' AND fg.away_player_a_id = p.id THEN 1
             ELSE 0
           END
         ) as wins,
         SUM(
           CASE
-            WHEN fg.winner_side = 'home' AND fg.away_player_a_id = p.id THEN 1
-            WHEN fg.winner_side = 'away' AND fg.home_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'home' AND fg.away_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'away' AND fg.home_player_a_id = p.id THEN 1
             ELSE 0
           END
         ) as losses
@@ -356,18 +361,18 @@ class PlayerManager {
     const sql = `
       SELECT
         p.*,
-        COUNT(fg.id) as total_matches,
+        COUNT(f.id) as total_matches,
         SUM(
           CASE
-            WHEN fg.winner_side = 'home' AND fg.home_player_a_id = p.id THEN 1
-            WHEN fg.winner_side = 'away' AND fg.away_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'home' AND fg.home_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'away' AND fg.away_player_a_id = p.id THEN 1
             ELSE 0
           END
         ) as wins,
         SUM(
           CASE
-            WHEN fg.winner_side = 'home' AND fg.away_player_a_id = p.id THEN 1
-            WHEN fg.winner_side = 'away' AND fg.home_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'home' AND fg.away_player_a_id = p.id THEN 1
+            WHEN f.id IS NOT NULL AND fg.winner_side = 'away' AND fg.home_player_a_id = p.id THEN 1
             ELSE 0
           END
         ) as losses
@@ -426,9 +431,20 @@ class PlayerManager {
 
   async updatePlayer(id, playerData) {
     const { name, email, phone, skill_level } = playerData;
-    
+
+    if (name !== undefined && name !== null && !String(name).trim()) {
+      throw new Error('Player name cannot be empty');
+    }
+    let skill = skill_level;
+    if (skill !== undefined && skill !== null) {
+      skill = Number(skill_level);
+      if (!Number.isInteger(skill) || skill < 1 || skill > 10) {
+        throw new Error('skill_level must be an integer between 1 and 10');
+      }
+    }
+
     const sql = `
-      UPDATE players 
+      UPDATE players
       SET name = COALESCE(?, name),
           email = COALESCE(?, email),
           phone = COALESCE(?, phone),
@@ -436,8 +452,8 @@ class PlayerManager {
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND active = 1
     `;
-    
-    const result = await this.db.run(sql, [name, email, phone, skill_level, id]);
+
+    const result = await this.db.run(sql, [name !== undefined && name !== null ? String(name).trim() : null, email, phone, skill, id]);
     
     if (result.changes === 0) {
       throw new Error('Player not found or inactive');

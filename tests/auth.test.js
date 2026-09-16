@@ -19,7 +19,7 @@ describe('auth and steward accounts', () => {
         .post('/api/auth/login')
         .send({ name: ADMIN.name, password: ADMIN.password });
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ role: 'admin', name: 'admin' });
+      expect(res.body).toEqual({ role: 'admin', name: 'admin', id: expect.any(String) });
     });
 
     test('uses the new default password instead of the legacy default', async () => {
@@ -61,14 +61,14 @@ describe('auth and steward accounts', () => {
 
     test('admin headers resolve role and canonical name', async () => {
       const res = await request(app).get('/api/auth/role').set(adminHeaders());
-      expect(res.body).toEqual({ role: 'admin', name: 'admin' });
+      expect(res.body).toEqual({ role: 'admin', name: 'admin', id: expect.any(String) });
     });
 
     test('name matching is case-insensitive and returns canonical casing', async () => {
       const res = await request(app)
         .get('/api/auth/role')
         .set(adminHeaders({ name: 'ADMIN' }));
-      expect(res.body).toEqual({ role: 'admin', name: 'admin' });
+      expect(res.body).toEqual({ role: 'admin', name: 'admin', id: expect.any(String) });
     });
 
     test('wrong password falls back to viewer', async () => {
@@ -111,7 +111,7 @@ describe('auth and steward accounts', () => {
         .post('/api/auth/login')
         .send({ name: 'ref steward', password: 'pw12345' });
       expect(login.status).toBe(200);
-      expect(login.body).toEqual({ role: 'steward', name: 'Ref Steward' });
+      expect(login.body).toEqual({ role: 'steward', name: 'Ref Steward', id: expect.any(String) });
     });
 
     test('duplicate names are rejected', async () => {
@@ -212,7 +212,7 @@ describe('auth and steward accounts', () => {
       const newHeaders = await request(app)
         .get('/api/auth/role')
         .set(adminHeaders({ password: 'rotated1' }));
-      expect(newHeaders.body).toEqual({ role: 'admin', name: 'admin' });
+      expect(newHeaders.body).toEqual({ role: 'admin', name: 'admin', id: expect.any(String) });
     });
   });
 

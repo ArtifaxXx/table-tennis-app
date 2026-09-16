@@ -56,8 +56,16 @@ export const DivisionProvider = ({ children }) => {
     }
   }, []);
 
+  // Sequence guard: only the latest apply wins, so a slower in-flight request
+  // cannot overwrite a newer season/division selection.
+  const applySeqRef = useRef(0);
+
   const applySeasonAndDivision = useCallback(async ({ seasonId, divisionId }) => {
+    const seq = ++applySeqRef.current;
+    const isStale = () => seq !== applySeqRef.current;
+
     const nextSeasons = seasons && seasons.length > 0 ? seasons : await fetchSeasons();
+    if (isStale()) return;
     if (!seasons || seasons.length === 0) setSeasons(nextSeasons);
 
     let resolvedSeasonId = seasonId || '';
@@ -74,6 +82,7 @@ export const DivisionProvider = ({ children }) => {
     if (!resolvedSeasonId) {
       resolvedSeasonId = nextSeasons[0]?.id || '';
     }
+    if (isStale()) return;
 
     // Clear current division selection immediately so consumers don't fetch using a stale
     // divisionId from a different season.
@@ -82,6 +91,7 @@ export const DivisionProvider = ({ children }) => {
     setSelectedSeasonId(resolvedSeasonId);
 
     const nextDivisions = await fetchDivisions(resolvedSeasonId);
+    if (isStale()) return;
     setDivisions(nextDivisions);
 
     const exists = divisionId && nextDivisions.some((d) => d.id === divisionId);

@@ -1,17 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useDivisionContext } from '../context/DivisionContext';
+import { useToast } from '../context/ToastContext';
 import Card from '../components/Card';
 import PageHeader from '../components/PageHeader';
 import DivisionSelector from '../components/DivisionSelector';
 
 const Cup = () => {
-  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId } = useDivisionContext();
+  const { seasons, selectedSeasonId, selectedDivisionId, setSelectedSeasonId, loading: contextLoading } = useDivisionContext();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('bracket');
-  const didInitRef = useRef(false);
+  const toast = useToast();
 
   const fetchCup = useCallback(async () => {
     try {
@@ -25,21 +26,21 @@ const Cup = () => {
     } catch (e) {
       console.error(e);
       setData(null);
+      toast.error(e?.response?.data?.error || 'Failed to load cup');
     } finally {
       setLoading(false);
     }
-  }, [selectedSeasonId, selectedDivisionId]);
+  }, [selectedSeasonId, selectedDivisionId, toast]);
 
   useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
+    if (contextLoading) return;
+    if (!selectedSeasonId || !selectedDivisionId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     fetchCup();
-  }, [fetchCup]);
-
-  useEffect(() => {
-    if (!selectedSeasonId || !selectedDivisionId) return;
-    fetchCup();
-  }, [fetchCup, selectedSeasonId, selectedDivisionId]);
+  }, [contextLoading, fetchCup, selectedSeasonId, selectedDivisionId]);
 
   const rounds = useMemo(() => {
     const matches = data?.matches || [];

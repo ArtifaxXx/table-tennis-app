@@ -128,10 +128,25 @@ class TeamSeasonDivisionManager {
         Array.from(unique)
       );
       if (rows.length !== unique.size) throw new Error('One or more teams not found or inactive');
+
+      // A team can only belong to one division per season (UNIQUE constraint);
+      // surface a friendly error instead of the raw constraint message.
+      const taken = await this.db.all(
+        `SELECT dt.team_id, t.name AS team_name, d.name AS division_name
+         FROM team_season_division_teams dt
+         JOIN teams t ON t.id = dt.team_id
+         JOIN team_season_divisions d ON d.id = dt.division_id
+         WHERE dt.team_season_id = ? AND dt.division_id <> ?
+           AND dt.team_id IN (${Array.from(unique).map(() => '?').join(',')})`,
+        [division.team_season_id, divisionId, ...Array.from(unique)]
+      );
+      if (taken.length > 0) {
+        const names = taken.map((r) => `${r.team_name} (in ${r.division_name})`).join(', ');
+        throw new Error(`Team(s) already assigned to another division this season: ${names}`);
+      }
     }
 
-    await this.db.run('BEGIN TRANSACTION');
-    try {
+    await this.db.transaction(async () => {
       await this.db.run('DELETE FROM team_season_division_teams WHERE division_id = ?', [divisionId]);
 
       for (const teamId of unique) {
@@ -141,16 +156,7 @@ class TeamSeasonDivisionManager {
           [uuidv4(), division.team_season_id, divisionId, teamId]
         );
       }
-
-      await this.db.run('COMMIT');
-    } catch (e) {
-      try {
-        await this.db.run('ROLLBACK');
-      } catch (rollbackError) {
-        // ignore
-      }
-      throw e;
-    }
+    });
 
     return this.getDivisionTeams(divisionId);
   }

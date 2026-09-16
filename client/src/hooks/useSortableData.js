@@ -25,24 +25,30 @@ export const defaultCompare = (a, b) => {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 };
 
+export function sortList(items, sortConfig) {
+  const list = Array.isArray(items) ? [...items] : [];
+  if (!sortConfig?.key) return list;
+
+  const { key, direction = 'asc', getValue } = sortConfig;
+  const dir = direction === 'desc' ? -1 : 1;
+
+  list.sort((x, y) => {
+    const a = getValue ? getValue(x) : x?.[key];
+    const b = getValue ? getValue(y) : y?.[key];
+    // Missing values always sort last regardless of direction.
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return defaultCompare(a, b) * dir;
+  });
+
+  return list;
+}
+
 export function useSortableData(items, initialConfig = null) {
   const [sortConfig, setSortConfig] = useState(initialConfig);
 
-  const sortedItems = useMemo(() => {
-    const list = Array.isArray(items) ? [...items] : [];
-    if (!sortConfig?.key) return list;
-
-    const { key, direction = 'asc', getValue } = sortConfig;
-    const dir = direction === 'desc' ? -1 : 1;
-
-    list.sort((x, y) => {
-      const a = getValue ? getValue(x) : x?.[key];
-      const b = getValue ? getValue(y) : y?.[key];
-      return defaultCompare(a, b) * dir;
-    });
-
-    return list;
-  }, [items, sortConfig]);
+  const sortedItems = useMemo(() => sortList(items, sortConfig), [items, sortConfig]);
 
   const requestSort = (key, getValue) => {
     setSortConfig((prev) => {
