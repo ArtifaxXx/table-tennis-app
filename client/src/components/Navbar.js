@@ -22,6 +22,7 @@ const Navbar = () => {
   const [adminUsers, setAdminUsers] = useState([]);
   const [newAdminName, setNewAdminName] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAccountRole, setNewAccountRole] = useState('steward');
   const [resetTargetId, setResetTargetId] = useState(null);
   const [resetPasswordInput, setResetPasswordInput] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -54,14 +55,19 @@ const Navbar = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authOpen, role]);
 
-  const addSteward = async () => {
+  const addAccount = async () => {
     setAuthLoading(true);
     try {
-      await axios.post('/api/admin/users', { name: newAdminName.trim(), password: newAdminPassword });
+      await axios.post('/api/admin/users', {
+        name: newAdminName.trim(),
+        password: newAdminPassword,
+        role: newAccountRole,
+      });
       setNewAdminName('');
       setNewAdminPassword('');
+      setNewAccountRole('steward');
       await fetchAdminUsers();
-      toast.success('Steward account created');
+      toast.success(`${newAccountRole === 'admin' ? 'Admin' : 'Steward'} account created`);
     } catch (e) {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
@@ -75,7 +81,7 @@ const Navbar = () => {
       await axios.delete(`/api/admin/users/${user.id}`);
       setConfirmDeleteId(null);
       await fetchAdminUsers();
-      toast.success('Steward account removed');
+      toast.success('Account removed');
     } catch (e) {
       toast.error(e?.response?.data?.error || e.message);
     } finally {
@@ -406,7 +412,7 @@ const Navbar = () => {
                 <div className="grid grid-cols-3 rounded-lg bg-gray-100 p-1">
                   {[
                     ['account', 'Account'],
-                    ...(role === 'admin' ? [['stewards', 'Stewards']] : []),
+                    ...(role === 'admin' ? [['accounts', 'Accounts']] : []),
                     ['data', 'Data'],
                   ].map(([key, label]) => (
                     <button
@@ -460,19 +466,21 @@ const Navbar = () => {
                   </div>
                 )}
 
-                {role === 'admin' && authTab === 'stewards' && (
+                {role === 'admin' && authTab === 'accounts' && (
                   <div className="space-y-4">
                   <div>
-                    <div className="text-sm font-semibold text-gray-800">Steward accounts</div>
-                    <div className="text-sm text-gray-600">Manage delegated access without exposing administrator controls.</div>
+                    <div className="text-sm font-semibold text-gray-800">Accounts</div>
+                    <div className="text-sm text-gray-600">Manage admin and steward sign-in accounts.</div>
                   </div>
                   <div className="space-y-3">
-                    {adminUsers.filter((user) => user.role === 'steward').map((user) => (
+                    {adminUsers.map((user) => (
                       <div key={user.id} className="rounded-lg border border-gray-200 p-3 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-gray-900">{user.name}</span>
-                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Steward</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${user.role === 'admin' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-700'}`}>
+                              {user.role}
+                            </span>
                           </div>
                           {resetTargetId !== user.id && confirmDeleteId !== user.id && (
                             <div className="flex gap-2">
@@ -554,7 +562,7 @@ const Navbar = () => {
                     ))}
                   </div>
                   <div className="border-t border-gray-200 pt-4 space-y-3">
-                    <div className="text-sm font-semibold text-gray-800">Add steward</div>
+                    <div className="text-sm font-semibold text-gray-800">Add account</div>
                     <label className="block text-sm text-gray-700">
                       Name
                       <input
@@ -573,14 +581,25 @@ const Navbar = () => {
                         onChange={(e) => setNewAdminPassword(e.target.value)}
                       />
                     </label>
+                    <label className="block text-sm text-gray-700">
+                      Role
+                      <select
+                        className="input mt-1"
+                        value={newAccountRole}
+                        onChange={(e) => setNewAccountRole(e.target.value)}
+                      >
+                        <option value="steward">Steward — editing only</option>
+                        <option value="admin">Admin — full access incl. backups</option>
+                      </select>
+                    </label>
                     <div className="flex justify-end">
                       <button
                         type="button"
                         className="btn btn-primary"
-                        onClick={addSteward}
+                        onClick={addAccount}
                         disabled={authLoading || !newAdminName.trim() || newAdminPassword.length < 3}
                       >
-                        Create steward
+                        Create account
                       </button>
                     </div>
                   </div>

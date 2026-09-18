@@ -23,7 +23,7 @@ describe('steward permissions', () => {
     const created = await request(app)
       .post('/api/admin/users')
       .set(adminHeaders())
-      .send({ ...STEWARD, role: 'admin' });
+      .send(STEWARD);
     expect(created.status).toBe(200);
     expect(created.body.role).toBe('steward');
   });

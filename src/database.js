@@ -172,10 +172,6 @@ class Database {
       }
     } else {
       await this.run("UPDATE admin_users SET role = 'admin' WHERE lower(name) = 'admin'");
-      const removed = await this.run("DELETE FROM admin_users WHERE role = 'admin' AND lower(name) <> 'admin'");
-      if (removed.changes > 0) {
-        console.warn(`Removed ${removed.changes} extra admin account(s); only 'admin' may hold the admin role`);
-      }
     }
 
     const admin = await this.get("SELECT id FROM admin_users WHERE lower(name) = 'admin'");

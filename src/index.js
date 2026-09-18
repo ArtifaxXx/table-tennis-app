@@ -511,6 +511,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const name = req.body && typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 60) : '';
     const password = req.body && typeof req.body.password === 'string' ? req.body.password.trim() : '';
+    const role = req.body && req.body.role === 'admin' ? 'admin' : 'steward';
     if (!name) throw new Error('name is required');
     if (password.length < 3) throw new Error('Password must be at least 3 characters');
 
@@ -519,17 +520,17 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 
     await db.run(
       'INSERT INTO admin_users (id, name, password_hash, role) VALUES (?, ?, ?, ?)',
-      [uuidv4(), name, hashPassword(password), 'steward']
+      [uuidv4(), name, hashPassword(password), role]
     );
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'create_steward',
+      action: 'create_account',
       entity: 'admin_users',
-      details: { name, role: 'steward' },
+      details: { name, role },
       req,
     });
-    res.json({ ok: true, role: 'steward' });
+    res.json({ ok: true, role });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -540,8 +541,8 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     const password = req.body && typeof req.body.password === 'string' ? req.body.password.trim() : '';
     if (password.length < 3) throw new Error('Password must be at least 3 characters');
 
-    const target = await db.get("SELECT id, name FROM admin_users WHERE id = ? AND role = 'steward'", [req.params.id]);
-    if (!target) throw new Error('Steward not found');
+    const target = await db.get('SELECT id, name FROM admin_users WHERE id = ?', [req.params.id]);
+    if (!target) throw new Error('Account not found');
 
     await db.run(
       'UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -550,7 +551,7 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'reset_steward_password',
+      action: 'reset_account_password',
       entity: 'admin_users',
       entityId: target.id,
       details: { name: target.name },
@@ -564,17 +565,23 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
-    const target = await db.get("SELECT id, name FROM admin_users WHERE id = ? AND role = 'steward'", [req.params.id]);
-    if (!target) throw new Error('Steward not found');
+    const target = await db.get('SELECT id, name, role FROM admin_users WHERE id = ?', [req.params.id]);
+    if (!target) throw new Error('Account not found');
+    if (target.id === req.actorId) throw new Error('You cannot delete your own account');
+
+    if (target.role === 'admin') {
+      const count = await db.get("SELECT COUNT(*) AS c FROM admin_users WHERE role = 'admin' AND active = 1");
+      if (!count || count.c <= 1) throw new Error('Cannot delete the last admin account');
+    }
 
     await db.run('DELETE FROM admin_users WHERE id = ?', [target.id]);
     adminCredentialCache.clear();
     await logActivity({
       eventType: 'edit',
-      action: 'delete_steward',
+      action: 'delete_account',
       entity: 'admin_users',
       entityId: target.id,
-      details: { name: target.name },
+      details: { name: target.name, role: target.role },
       req,
     });
     res.json({ ok: true });

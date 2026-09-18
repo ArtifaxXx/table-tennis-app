@@ -103,7 +103,7 @@ describe('auth and steward accounts', () => {
       const create = await request(app)
         .post('/api/admin/users')
         .set(adminHeaders())
-        .send({ name: 'Ref Steward', password: 'pw12345', role: 'admin' });
+        .send({ name: 'Ref Steward', password: 'pw12345' });
       expect(create.status).toBe(200);
       expect(create.body.role).toBe('steward');
 

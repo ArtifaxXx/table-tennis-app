@@ -367,6 +367,61 @@ describe('scoring safety', () => {
   });
 });
 
+describe('admin account management', () => {
+  test('admin can create a second admin account that can download backups', async () => {
+    const create = await request(app)
+      .post('/api/admin/users')
+      .set(adminHeaders())
+      .send({ name: 'db_bkup_test', password: 'backup-pass-1', role: 'admin' });
+    expect(create.status).toBe(200);
+    expect(create.body.role).toBe('admin');
+
+    const backupHeaders = { 'X-Admin-Name': 'db_bkup_test', 'X-Admin-Password': 'backup-pass-1' };
+    const backup = await request(app).get('/api/admin/database-backup').set(backupHeaders);
+    expect(backup.status).toBe(200);
+  });
+
+  test('role defaults to steward when omitted', async () => {
+    const create = await request(app)
+      .post('/api/admin/users')
+      .set(adminHeaders())
+      .send({ name: 'steward_default_test', password: 'steward-pass' });
+    expect(create.status).toBe(200);
+    expect(create.body.role).toBe('steward');
+
+    const stewardHeaders = { 'X-Admin-Name': 'steward_default_test', 'X-Admin-Password': 'steward-pass' };
+    const denied = await request(app).get('/api/admin/database-backup').set(stewardHeaders);
+    expect(denied.status).toBe(403);
+  });
+
+  test('an account cannot delete itself', async () => {
+    const me = await request(app).get('/api/auth/role').set(adminHeaders());
+    const res = await request(app)
+      .delete(`/api/admin/users/${me.body.id}`)
+      .set(adminHeaders());
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/own account/i);
+  });
+
+  test('an admin can delete another admin account', async () => {
+    const users = await request(app).get('/api/admin/users').set(adminHeaders());
+    const extra = users.body.find((u) => u.role === 'admin' && u.name === 'db_bkup_test');
+    const res = await request(app)
+      .delete(`/api/admin/users/${extra.id}`)
+      .set(adminHeaders());
+    expect(res.status).toBe(200);
+
+    // Now 'admin' is the only admin; self-delete already covered above, so verify
+    // a steward cannot even attempt admin deletions.
+    const stewardHeaders = { 'X-Admin-Name': 'steward_default_test', 'X-Admin-Password': 'steward-pass' };
+    const me = await request(app).get('/api/auth/role').set(adminHeaders());
+    const denied = await request(app)
+      .delete(`/api/admin/users/${me.body.id}`)
+      .set(stewardHeaders);
+    expect(denied.status).toBe(403);
+  });
+});
+
 describe('api robustness', () => {
 
   test('unknown API routes return a JSON 404', async () => {
@@ -409,3 +464,4 @@ describe('api robustness', () => {
     expect(throttled.status).toBe(429);
   });
 });
+
